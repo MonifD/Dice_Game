@@ -5,6 +5,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const config = require('./config');
 const registre = require('./minijeux');
+const version = require('./services/version');
 
 function creerApp(obtenirIo) {
   const app = express();
@@ -36,9 +37,19 @@ function creerApp(obtenirIo) {
     });
   }
 
-  app.get('/api/sante', (req, res) => res.json({ ok: true, heure: Date.now() }));
+  /**
+   * Santé du serveur : utilisée par Render (healthcheck) et par la pipeline de livraison
+   * (quelle version tourne ? une partie est-elle en cours ? -> on ne déploie pas pendant une partie).
+   * Ne renvoie que des compteurs, aucune donnée de joueur.
+   */
+  app.get('/api/sante', async (req, res) => {
+    let activite = { partiesEnCours: null, sallesAttente: null };
+    try { activite = await require('./moteur/moteur').activite(); } catch { /* stockage indisponible */ }
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, version: version.version, commit: version.commit, ...activite, heure: Date.now() });
+  });
   // Configuration publique utilisée par le navigateur (où se connecter en temps réel)
-  app.get('/api/config', (req, res) => res.json({ socketPath: config.socketPath, urlTempsReel: config.urlTempsReel }));
+  app.get('/api/config', (req, res) => res.json({ socketPath: config.socketPath, urlTempsReel: config.urlTempsReel, version: version.version }));
 
   app.use('/api/auth', require('./routes/auth'));
   app.use('/api/admin', require('./routes/admin')(obtenirIo));

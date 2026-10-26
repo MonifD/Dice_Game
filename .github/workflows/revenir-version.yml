@@ -1,0 +1,70 @@
+# =====================================================================
+#  4. REVENIR À UNE VERSION (bouton manuel)
+#     Onglet Actions -> « Revenir à une version » -> Run workflow -> ex. v1.2.2
+#     La branche production repointe sur cette version ; Render la redéploie.
+#     (Les données en base ne reviennent pas en arrière : voir docs/CICD.md.)
+# =====================================================================
+name: Revenir à une version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à remettre en production (ex. v1.2.2) — liste dans l'onglet Releases"
+        required: true
+        type: string
+      ignorer_parties:
+        description: "Ne pas attendre la fin des parties en cours (urgence)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: livraison
+  cancel-in-progress: false
+
+env:
+  PROD_URL: ${{ vars.PROD_URL || 'https://last-war-arene.onrender.com' }}
+
+jobs:
+  revenir:
+    name: Revenir à ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL || 'https://last-war-arene.onrender.com' }}
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Vérifier que la version existe
+        run: |
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! git rev-parse -q --verify "refs/tags/$VERSION" > /dev/null; then
+            echo "::error::Version « $VERSION » introuvable. Versions disponibles :"
+            git tag --list 'v*' --sort=-v:refname | head -15
+            exit 1
+          fi
+          echo "✅ $VERSION trouvée ($(git log -1 --format='%cd' --date=short "$VERSION"))"
+
+      - name: Attendre qu'aucune partie ne soit en cours
+        if: ${{ !inputs.ignorer_parties }}
+        run: node scripts/ci/attendre-calme.js "$PROD_URL" --minutes 30
+
+      - name: Remettre la version en production
+        run: |
+          git push --force origin "refs/tags/$VERSION^{commit}:refs/heads/production"
+          echo "↩️ Branche production -> $VERSION (Render redéploie)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Vérifier la production
+        run: |
+          node scripts/ci/verifier-prod.js "$PROD_URL" "$VERSION" --minutes 20
+          echo "✅ **$VERSION est de nouveau en production.**" >> "$GITHUB_STEP_SUMMARY"

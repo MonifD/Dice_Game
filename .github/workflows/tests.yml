@@ -1,0 +1,234 @@
+# =====================================================================
+#  TESTS — workflow réutilisable, appelé par les autres pipelines.
+#    complet: false -> tests rapides (~3 min) : push sur une branche
+#    complet: true  -> tests complets (~12 min) : PR vers main et livraison
+# =====================================================================
+name: Tests
+
+on:
+  workflow_call:
+    inputs:
+      complet:
+        description: "Lancer la suite complète (16 mini-jeux, multi-instances, audit)"
+        type: boolean
+        default: false
+      ref:
+        description: "Commit à tester (par défaut : celui de l'événement)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # -------------------------------------------------------------------
+  statique:
+    name: Statique (syntaxe, unitaires, schéma)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_HOST_AUTH_METHOD: trust   # base jetable : pas de mot de passe écrit dans le dépôt
+          POSTGRES_DB: ombre
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci@localhost:5432/ombre
+      DIRECT_URL: postgresql://ci@localhost:5432/ombre
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Syntaxe de tous les fichiers JavaScript
+        run: |
+          find src public scripts tests prisma api -name '*.js' -print0 | xargs -0 -n1 node --check
+          echo "✅ syntaxe OK"
+
+      - name: Tests unitaires des mini-jeux
+        run: npm test
+
+      - name: Schéma Prisma valide
+        run: npx prisma validate
+
+      - name: Aucune migration oubliée
+        run: |
+          set +e
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" \
+            --exit-code > diff.sql
+          code=$?
+          set -e
+          if [ "$code" = "2" ]; then
+            echo "::error title=Migration manquante::prisma/schema.prisma a changé sans migration. Lance « npm run db:nouvelle-migration » en local puis commite le dossier prisma/migrations."
+            cat diff.sql
+            exit 1
+          elif [ "$code" != "0" ]; then
+            echo "::error::prisma migrate diff a échoué (code $code)"; exit 1
+          fi
+          echo "✅ les migrations correspondent au schéma"
+
+      - name: Audit de sécurité des dépendances
+        if: inputs.complet
+        run: |
+          # bloquant pour les failles critiques ; les failles « high » sont signalées sans bloquer
+          npm audit --omit=dev --audit-level=critical
+          npm audit --omit=dev --audit-level=high || echo "::warning title=npm audit::failles « high » détectées (voir le détail ci-dessus)"
+
+  # -------------------------------------------------------------------
+  integration:
+    name: Intégration (API, chat, parties avec bots)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: lastwar
+          POSTGRES_HOST_AUTH_METHOD: trust   # base jetable : pas de mot de passe écrit dans le dépôt
+          POSTGRES_DB: lastwar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lastwar" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # même configuration que la production Render : une instance, état des parties en mémoire
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://lastwar@localhost:5432/lastwar
+      DIRECT_URL: postgresql://lastwar@localhost:5432/lastwar
+      SUPER_ADMIN_PSEUDO: ci-admin
+      # JWT_SECRET et SUPER_ADMIN_MOT_DE_PASSE : générés au hasard à chaque exécution (étape ci-dessous)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Générer des secrets de test jetables
+        run: |
+          jwt=$(openssl rand -hex 32); mdp=$(openssl rand -hex 16)
+          echo "::add-mask::$jwt"; echo "::add-mask::$mdp"
+          { echo "JWT_SECRET=$jwt"; echo "SUPER_ADMIN_MOT_DE_PASSE=$mdp"; } >> "$GITHUB_ENV"
+      - name: Installer les dépendances (y compris celles de test)
+        # NODE_ENV=production ferait sauter les devDependencies (socket.io-client des bots)
+        run: npm ci --include=dev
+
+      - name: Migrations sur une base vierge + questions du quiz
+        run: |
+          npx prisma migrate deploy
+          node prisma/seed.js
+
+      - name: Démarrer le serveur
+        run: |
+          # sortie normale dans serveur.log, erreurs (console.error / console.warn) dans serveur-erreurs.log
+          nohup node src/serveur.js > serveur.log 2> serveur-erreurs.log &
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/sante > /dev/null && { echo "✅ serveur prêt"; curl -s http://localhost:3000/api/sante; echo; exit 0; }
+            sleep 1
+          done
+          echo "::error::le serveur n'a pas démarré"; cat serveur.log serveur-erreurs.log; exit 1
+
+      - name: API, comptes et droits
+        run: node tests/integration/api.js
+
+      - name: Chat
+        run: node tests/integration/chat.js
+
+      - name: Partie de dé avec 20 joueurs simulés
+        if: ${{ !inputs.complet }}
+        run: node tests/charge.js --joueurs 20 --jeu des
+
+      - name: Les 16 mini-jeux avec 30 joueurs simulés
+        if: inputs.complet
+        run: node tests/charge.js --joueurs 30 --tous
+
+      - name: Aucune erreur inattendue dans les journaux du serveur
+        run: |
+          # seul avertissement attendu : pas de Redis (configuration identique à la production Render)
+          if grep -v -e 'REDIS_URL absent' -e '^\s*$' serveur-erreurs.log; then
+            echo "::error::le serveur a journalisé des erreurs inattendues (voir ci-dessus)"; exit 1
+          fi
+          echo "✅ journaux propres"
+
+      - name: Journaux du serveur (en cas d'échec)
+        if: failure()
+        run: tail -n 200 serveur.log serveur-erreurs.log
+
+  # -------------------------------------------------------------------
+  multi-instances:
+    name: Multi-instances (Redis, 2 serveurs)
+    if: inputs.complet
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: lastwar
+          POSTGRES_HOST_AUTH_METHOD: trust   # base jetable : pas de mot de passe écrit dans le dépôt
+          POSTGRES_DB: lastwar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lastwar" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://lastwar@localhost:5432/lastwar
+      DIRECT_URL: postgresql://lastwar@localhost:5432/lastwar
+      REDIS_URL: redis://localhost:6379
+      SUPER_ADMIN_PSEUDO: ci-admin
+      # JWT_SECRET et SUPER_ADMIN_MOT_DE_PASSE : générés au hasard à chaque exécution (étape ci-dessous)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Générer des secrets de test jetables
+        run: |
+          jwt=$(openssl rand -hex 32); mdp=$(openssl rand -hex 16)
+          echo "::add-mask::$jwt"; echo "::add-mask::$mdp"
+          { echo "JWT_SECRET=$jwt"; echo "SUPER_ADMIN_MOT_DE_PASSE=$mdp"; } >> "$GITHUB_ENV"
+      - name: Installer les dépendances (y compris celles de test)
+        # NODE_ENV=production ferait sauter les devDependencies (socket.io-client des bots)
+        run: npm ci --include=dev
+      - run: npx prisma migrate deploy
+
+      - name: Démarrer 2 serveurs qui partagent Redis
+        run: |
+          PORT=3000 nohup node src/serveur.js > serveur-a.log 2>&1 &
+          PORT=3001 nohup node src/serveur.js > serveur-b.log 2>&1 &
+          for p in 3000 3001; do
+            for _ in $(seq 1 60); do curl -sf http://localhost:$p/api/sante > /dev/null && break; sleep 1; done
+            curl -sf http://localhost:$p/api/sante > /dev/null || { echo "::error::serveur $p absent"; cat serveur-*.log; exit 1; }
+          done
+          echo "✅ 2 serveurs prêts"
+
+      - name: Partie à 40 joueurs répartis sur les 2 serveurs
+        run: node tests/charge.js --joueurs 40 --jeu minorite --urls http://localhost:3000,http://localhost:3001
+
+      - name: Journaux des serveurs (en cas d'échec)
+        if: failure()
+        run: tail -n 100 serveur-a.log serveur-b.log

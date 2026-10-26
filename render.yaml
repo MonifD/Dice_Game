@@ -1,15 +1,20 @@
 # Déploiement sur Render : Dashboard > New + > Blueprint > choisis ce dépôt GitHub.
 # Un serveur Node classique, à Francfort (proche de la France) : idéal pour les WebSockets.
+#
+# IMPORTANT (CI/CD) : Render suit la branche « production », jamais « main ».
+# Seule la pipeline GitHub Actions (.github/workflows/livraison.yml) met à jour « production »,
+# une fois les tests passés. Voir docs/CICD.md.
 services:
   - type: web
     name: last-war-arene
     runtime: node
+    branch: production       # mise à jour uniquement par la pipeline de livraison
     region: frankfurt
     plan: free               # gratuit : s'endort après 15 min sans visite (réveil ~1 min). « starter » (7 $/mois) = toujours allumé
     buildCommand: npm ci && npx prisma migrate deploy && node prisma/seed.js
     startCommand: npm start
     healthCheckPath: /api/sante
-    autoDeploy: true         # chaque push sur GitHub redéploie (évite de pousser pendant une partie !)
+    autoDeploy: true         # chaque mise à jour de la branche « production » par la pipeline redéploie
     envVars:
       - key: NODE_ENV
         value: production

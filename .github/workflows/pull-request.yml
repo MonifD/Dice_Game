@@ -1,0 +1,130 @@
+# =====================================================================
+#  2. PULL REQUEST VERS MAIN
+#     titre vérifié -> tests complets -> aperçu de la version en commentaire
+#     -> FUSION AUTOMATIQUE (squash) -> déclenche la livraison
+#
+#  Pas de fusion automatique si :
+#    - la PR est en brouillon (« Draft ») -> passe-la en « Ready for review » pour fusionner ;
+#    - elle porte l'étiquette « ne-pas-fusionner » ;
+#    - elle vient d'un fork (sécurité : on ne fusionne que les branches de ce dépôt).
+# =====================================================================
+name: Pull request
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: write        # fusionner la PR
+  pull-requests: write   # commenter la PR
+  actions: write         # déclencher la livraison après la fusion
+
+# un nouveau push sur la PR annule les tests en cours (jamais une fois la PR fermée)
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.pull_request.state == 'open' }}
+
+jobs:
+  # -------------------------------------------------------------------
+  titre:
+    name: Titre de la PR
+    # PR ouverte, et pour un « edited » seulement si le titre a changé (pas pour la description)
+    if: >-
+      github.event.pull_request.state == 'open' &&
+      (github.event.action != 'edited' || github.event.changes.title != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Le titre suit la convention (feat:, fix:, …)
+        env:
+          TITRE: ${{ github.event.pull_request.title }}
+        run: node scripts/ci/version.js --verifier-titre "$TITRE"
+
+  # -------------------------------------------------------------------
+  tests:
+    name: Tests
+    needs: titre
+    uses: ./.github/workflows/tests.yml
+    with:
+      complet: true
+
+  # -------------------------------------------------------------------
+  apercu:
+    name: Aperçu de la version
+    needs: [titre, tests]
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # le script vient de la PR (il peut ne pas encore exister sur main),
+      # l'historique des versions est lu sur main (--ref = commit de base de la PR)
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Calculer la version qui sera publiée
+        id: v
+        env:
+          TITRE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/version.js --ref "$BASE" --titre "$TITRE"
+      - name: Commenter la PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMERO: ${{ github.event.pull_request.number }}
+          VERSION: ${{ steps.v.outputs.version }}
+          LIVRER: ${{ steps.v.outputs.livrer }}
+          BROUILLON: ${{ github.event.pull_request.draft }}
+        run: |
+          if [ "$LIVRER" = "true" ]; then
+            ligne="🚀 Une fois fusionnée, cette PR sera publiée en **$VERSION** puis déployée sur Render."
+          else
+            ligne="📦 Cette PR ne change rien pour les joueurs (docs/ci/test/chore) : pas de nouvelle version ni de déploiement."
+          fi
+          if [ "$BROUILLON" = "true" ]; then
+            suite="✋ PR en **brouillon** : pas de fusion automatique. Passe-la en « Ready for review » pour fusionner."
+          else
+            suite="🔀 Fusion automatique dans \`main\` en cours…"
+          fi
+          printf '### ✅ Tous les tests sont passés\n\n%s\n\n%s\n' "$ligne" "$suite" > commentaire.md
+          gh pr comment "$NUMERO" --edit-last --body-file commentaire.md 2>/dev/null \
+            || gh pr comment "$NUMERO" --body-file commentaire.md
+
+  # -------------------------------------------------------------------
+  fusion:
+    name: Fusion automatique
+    needs: [titre, tests, apercu]
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(github.event.pull_request.labels.*.name, 'ne-pas-fusionner')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NUMERO: ${{ github.event.pull_request.number }}
+      TITRE: ${{ github.event.pull_request.title }}
+      SHA_TESTE: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Fusionner (squash) dans main
+        # --match-head-commit : refuse si un nouveau commit est arrivé après les tests
+        # la branche source n'est PAS supprimée (ex. « cicd » est réutilisée)
+        run: |
+          gh pr merge "$NUMERO" --squash \
+            --subject "$TITRE (#$NUMERO)" --body "" \
+            --match-head-commit "$SHA_TESTE"
+          echo "✅ PR #$NUMERO fusionnée dans main" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Déclencher la livraison
+        # une fusion faite par la pipeline ne déclenche pas « push » : on lance la livraison explicitement
+        run: |
+          gh workflow run livraison.yml --ref main
+          echo "🚚 Livraison lancée : voir l'onglet Actions → « Livraison »" >> "$GITHUB_STEP_SUMMARY"
