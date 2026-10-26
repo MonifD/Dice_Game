@@ -84,6 +84,7 @@ async function unePartie(miniJeu, { bots, org }) {
   const inscriptions = await Promise.all(sockets.map((s) => emettre(s, 'salle:inscrire', { code })));
   const refusees = inscriptions.filter((r) => !r.ok);
   if (refusees.length) console.warn('  inscriptions refusées :', refusees.slice(0, 3));
+  await Promise.all(sockets.map((s) => emettre(s, 'salle:pret', { code, pret: true })));
 
   const fin = new Promise((resolve) => {
     sockets.forEach((s, i) => {

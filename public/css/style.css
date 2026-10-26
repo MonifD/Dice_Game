@@ -234,3 +234,32 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .chat-form { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--bord); }
 .chat-form input { padding: 9px 10px; }
 .chat-muet { padding: 8px 12px; font-size: .85rem; color: #ff9a9a; background: var(--rouge-fond); }
+
+/* salle d'attente : statut « prêt » */
+.puce.pret { border-color: rgba(63, 191, 111, .45); }
+.puce.pas-pret { opacity: .75; border-style: dashed; }
+.pret-oui { color: #7fe0a3; font-size: .82rem; }
+.pret-non { color: var(--texte-3); font-size: .82rem; }
+
+/* interrupteur façon iPhone (« Prêt ») */
+.interrupteur { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-weight: 600; }
+.interrupteur.cache { display: none; }
+.interrupteur input { position: absolute; opacity: 0; width: 0; height: 0; }
+.interrupteur .glissiere { position: relative; width: 51px; height: 31px; border-radius: 99px; background: #4a5260; transition: background .25s; flex-shrink: 0; }
+.interrupteur .glissiere::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); transition: transform .25s; }
+.interrupteur input:checked + .glissiere { background: #34c759; }
+.interrupteur input:checked + .glissiere::after { transform: translateX(20px); }
+.interrupteur input:focus-visible + .glissiere { outline: 2px solid var(--accent); outline-offset: 2px; }
+.interrupteur input:disabled + .glissiere { opacity: .6; }
+.interrupteur .lib { color: var(--texte-3); transition: color .25s; }
+.interrupteur input:checked ~ .lib { color: #7fe0a3; }
+/* version compacte dans la liste des joueurs */
+.interrupteur.mini { gap: 6px; font-size: .78rem; font-weight: 500; }
+.interrupteur.mini .glissiere { width: 30px; height: 18px; }
+.interrupteur.mini .glissiere::after { top: 2px; left: 2px; width: 14px; height: 14px; box-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+.interrupteur.mini input:checked + .glissiere::after { transform: translateX(12px); }
+.interrupteur.mini input:checked ~ .lib, .interrupteur.mini:has(input:checked) .lib { color: #7fe0a3; }
+/* bouton d'exclusion dans la liste des joueurs */
+.btn-exclure { margin-left: 8px; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid rgba(239, 75, 75, .5); background: var(--rouge-fond); color: #ff6b6b; font-size: .7rem; font-weight: 700; line-height: 1; cursor: pointer; vertical-align: middle; }
+.btn-exclure:hover { background: var(--rouge); color: #fff; }
+.btn-exclure:disabled { opacity: .5; }

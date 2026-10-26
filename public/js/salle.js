@@ -56,8 +56,21 @@
   socket.on('salle:etat', (e) => { if (e?.code === code) recevoirEtat(e); });
   socket.on('salle:inscription', ({ id, pseudo }) => {
     if (!etat || etat.joueurs.some((j) => j.id === id)) return;
-    etat.joueurs.push({ id, pseudo, statut: 'enJeu', tourElimination: null });
+    etat.joueurs.push({ id, pseudo, statut: 'enJeu', tourElimination: null, pret: false });
     demanderRendu();
+  });
+  socket.on('salle:pret', ({ id, pret }) => {
+    const j = etat?.joueurs.find((x) => x.id === id);
+    if (!j) return;
+    j.pret = pret;
+    demanderRendu();
+  });
+  socket.on('salle:alerte', ({ par }) => {
+    if (etat?.phase !== 'attente') return;
+    LW.son.alerte();
+    const j = monJoueur();
+    toast(!j ? `🔔 ${par} appelle les joueurs : la partie va commencer, rejoins-la !`
+      : j.pret ? `🔔 ${par} : la partie va commencer !` : `🔔 ${par} : la partie va commencer, active « Prêt » à côté de ton nom !`);
   });
   socket.on('salle:desinscription', ({ id, exclu }) => {
     if (!etat) return;
@@ -84,6 +97,7 @@
 
   // ------------------------------------------------------------ helpers
   const monJoueur = () => etat?.joueurs.find((j) => j.id === String(moi.id));
+  const nbPrets = () => etat.joueurs.filter((j) => j.pret).length;
   const pseudo = (id) => etat?.joueurs.find((j) => j.id === String(id))?.pseudo || '?';
   const organisateur = LW.peutOrganiser(moi);
 
@@ -120,6 +134,7 @@
     if (etat.phase === 'tour') await chargerModule(etat.jeuActif.id);
     else if (etat.phase === 'resultats' && etat.dernierResultat) await chargerModule(etat.dernierResultat.departage ? '_departage' : etat.miniJeu.id);
     if (!premier && ancienne !== etat.phase && etat.phase === 'termine' && etat.gagnant?.id === String(moi.id)) toast('🏆 Tu as gagné !', 'ok');
+    if (!premier && ancienne === 'attente' && etat.phase === 'tour' && monJoueur()) LW.son.depart();
     rendre();
   }
 
@@ -133,13 +148,34 @@
     const [txt, cls] = phases[etat.phase];
     $('#phase').textContent = txt; $('#phase').className = `badge ${cls}`;
     const enJeu = etat.joueurs.filter((j) => j.statut === 'enJeu').length;
-    $('#compteur').textContent = etat.phase === 'attente' ? `${etat.joueurs.length} inscrit(s)` : `${enJeu} / ${etat.joueurs.length} en jeu`;
+    $('#compteur').textContent = etat.phase === 'attente' ? `${nbPrets()} / ${etat.joueurs.length} prêt(s)` : `${enJeu} / ${etat.joueurs.length} en jeu`;
 
     rendreBandeau();
     rendreJoueurs();
     rendreOrga();
     rendreScene();
   }
+
+  /** Interrupteur « Prêt » sur sa propre ligne de la liste des joueurs (la liste est redessinée : délégation). */
+  let pretEnCours = false;
+  $('#joueurs').addEventListener('change', async (e) => {
+    if (e.target.id !== 'chk-pret') return;
+    const voulu = e.target.checked;
+    pretEnCours = true;
+    e.target.disabled = true;
+    const rep = await LW.emettre('salle:pret', { code, pret: voulu });
+    pretEnCours = false;
+    if (!rep.ok) toast(rep.erreur, 'erreur');
+    rendreJoueurs();
+  });
+  $('#joueurs').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-exclure]');
+    if (!b) return;
+    if (!confirm(`Exclure ${b.dataset.pseudo} de la salle d'attente ?`)) return;
+    b.disabled = true;
+    const rep = await LW.emettre('salle:exclure', { code, joueurId: b.dataset.exclure });
+    if (!rep.ok) { toast(rep.erreur, 'erreur'); b.disabled = false; }
+  });
 
   function rendreBandeau() {
     const j = monJoueur();
@@ -161,7 +197,14 @@
     $('#joueurs').innerHTML = tries.map((j) => {
       const a = actions.get(j.id);
       let val = '';
-      if (a) val = a.public != null && mod?.formater ? echapper(mod.formater(a.public, a)) : a.fini ? '✓' : '…';
+      if (etat.phase === 'attente' && j.id === String(moi.id)) {
+        val = `<label class="interrupteur mini" title="Indique à l'organisateur que tu es prêt à jouer">
+          <span class="lib">${j.pret ? 'Prêt' : 'Pas prêt'}</span><input type="checkbox" id="chk-pret" ${j.pret ? 'checked' : ''} ${pretEnCours ? 'disabled' : ''}><span class="glissiere"></span></label>`;
+      } else if (etat.phase === 'attente') {
+        val = j.pret ? '<span class="pret-oui">✅ prêt</span>' : '<span class="pret-non">⏳ pas prêt</span>';
+        if (organisateur && !j.pret) val += `<button class="btn-exclure" title="Exclure de la salle" data-exclure="${j.id}" data-pseudo="${echapper(j.pseudo)}">✕</button>`;
+      }
+      else if (a) val = a.public != null && mod?.formater ? echapper(mod.formater(a.public, a)) : a.fini ? '✓' : '…';
       else if (j.statut === 'elimine') val = `<span class="muet petit">T${j.tourElimination}</span>`;
       return `<div class="joueur-ligne ${j.statut === 'elimine' ? 'elimine' : ''} ${j.id === String(moi.id) ? 'moi' : ''}">
         <span class="point"></span><span>${echapper(j.pseudo)}</span><span class="val">${val}</span></div>`;
@@ -174,8 +217,13 @@
     const b = [];
     let aide = '';
     if (etat.phase === 'attente') {
-      b.push(`<button class="btn principal" data-o="lancer" ${etat.joueurs.length < 2 ? 'disabled' : ''}>▶ Lancer la partie</button>`);
-      aide = etat.joueurs.length < 2 ? 'Il faut au moins 2 joueurs inscrits pour lancer.' : 'Une fois lancée, plus personne ne peut rejoindre (sauf en spectateur).';
+      const n = etat.joueurs.length;
+      const prets = nbPrets();
+      b.push('<button class="btn" data-o="alerter" title="Fait sonner une alerte chez tous les joueurs de la salle">🔔 Appeler les joueurs</button>');
+      b.push(`<button class="btn principal" data-o="lancer" ${n < 2 || prets < n ? 'disabled' : ''}>▶ Lancer la partie</button>`);
+      aide = n < 2 ? 'Il faut au moins 2 joueurs inscrits pour lancer.'
+        : prets < n ? `${prets} / ${n} joueurs prêts. La partie pourra être lancée quand tout le monde sera prêt. Exclus avec ✕ (liste des joueurs) ceux qui ne répondent pas.`
+          : 'Tout le monde est prêt ! Une fois lancée, plus personne ne peut rejoindre (sauf en spectateur).';
     } else if (etat.phase === 'tour') {
       b.push('<button class="btn" data-o="suivant">⏭ Terminer le tour maintenant</button>');
       aide = 'Les joueurs qui n\'ont pas joué à la fin du tour sont éliminés.';
@@ -192,6 +240,7 @@
       el.disabled = true;
       const rep = await LW.emettre(`salle:${o}`, { code });
       if (!rep.ok) { toast(rep.erreur, 'erreur'); el.disabled = false; }
+      else if (o === 'alerter') { toast('🔔 Alerte envoyée à tous les joueurs de la salle.', 'ok'); setTimeout(() => { el.disabled = false; }, 10000); }
     }));
   }
 
@@ -214,20 +263,20 @@
   // --- salle d'attente
   function sceneAttente(scene) {
     const inscrit = !!monJoueur();
+    const n = etat.joueurs.length;
+    const prets = nbPrets();
     const params = Object.entries(etat.params).filter(([k]) => !['avanceAuto', 'pauseResultats', 'toursMax'].includes(k));
     scene.innerHTML = `
+      ${inscrit ? '<div class="ligne"><button class="btn lien petit" id="btn-quitter">← Quitter la salle d\'attente</button></div>' : ''}
       <div class="pile" style="align-items:center;text-align:center;padding:10px 0">
         <div style="font-size:64px">${etat.miniJeu.icone}</div>
         <p class="muet" style="max-width:520px">${echapper(etat.miniJeu.description)}</p>
         <div class="puces" style="justify-content:center">${params.map(([k, v]) => `<span class="badge">${echapper(libelleParam(k))} : <b>${echapper(String(v === true ? 'oui' : v === false ? 'non' : v))}</b></span>`).join('')}</div>
-        <div class="grand-texte" style="font-size:3rem;margin-top:10px">${etat.joueurs.length}</div>
-        <div class="muet" style="margin-top:-14px">joueur(s) inscrit(s)</div>
-        ${inscrit
-          ? '<div class="bandeau qualifie" style="margin:8px 0 0">✅ Tu es inscrit. La partie va bientôt commencer…</div><button class="btn lien" id="btn-quitter">Quitter la salle d\'attente</button>'
-          : '<button class="btn principal geant" id="btn-rejoindre">⚔ Rejoindre la partie</button>'}
+        <div class="grand-texte" style="font-size:3rem;margin-top:10px">${prets} / ${n}</div>
+        <div class="muet" style="margin-top:-14px">joueur(s) prêt(s)</div>
+        ${inscrit ? '' : '<button class="btn principal geant" id="btn-rejoindre">⚔ Rejoindre la partie</button>'}
       </div>
-      <h3 style="margin-top:18px">Inscrits</h3>
-      <div class="puces">${etat.joueurs.map((j) => `<span class="puce ${j.id === String(moi.id) ? 'moi' : ''}">${echapper(j.pseudo)}${organisateur && j.id !== String(moi.id) ? `<button title="Retirer" data-exclure="${j.id}">×</button>` : ''}</span>`).join('') || '<span class="muet">Personne pour l\'instant.</span>'}</div>`;
+      <div class="puces" style="margin-top:18px">${etat.joueurs.map((x) => `<span class="puce ${x.id === String(moi.id) ? 'moi' : ''} ${x.pret ? 'pret' : 'pas-pret'}">${x.pret ? '✅' : '⏳'} ${echapper(x.pseudo)}</span>`).join('') || '<span class="muet">Personne pour l\'instant.</span>'}</div>`;
     $('#btn-rejoindre')?.addEventListener('click', async (e) => {
       e.target.disabled = true;
       const rep = await LW.emettre('salle:inscrire', { code });
@@ -237,10 +286,6 @@
       const rep = await LW.emettre('salle:quitter', { code });
       if (!rep.ok) toast(rep.erreur, 'erreur');
     });
-    $$('[data-exclure]', scene).forEach((b) => (b.onclick = async () => {
-      const rep = await LW.emettre('salle:exclure', { code, joueurId: b.dataset.exclure });
-      if (!rep.ok) toast(rep.erreur, 'erreur');
-    }));
   }
 
   const LIBELLES = { dureeTour: 'Temps par tour (s)' };

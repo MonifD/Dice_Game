@@ -94,8 +94,10 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `salle:observer` | `{ code }` | tous | rejoint la salle, reçoit l'état complet (sert aussi à la reconnexion) |
 | `salle:inscrire` | `{ code }` | tous | s'inscrit en salle d'attente (refusé une fois lancée) |
 | `salle:quitter` | `{ code }` | inscrit | quitte la salle d'attente |
-| `salle:exclure` | `{ code, joueurId }` | R4/R5/admin | retire quelqu'un de la salle d'attente |
-| `salle:lancer` | `{ code }` | R4/R5/admin | lance la partie (≥ 2 joueurs) |
+| `salle:pret` | `{ code, pret }` | inscrit | se déclare prêt / plus prêt (la partie ne se lance que si tous les inscrits sont prêts) |
+| `salle:alerter` | `{ code }` | R4/R5/admin | fait sonner l'alerte « la partie va commencer » chez tous (1 fois / 10 s) |
+| `salle:exclure` | `{ code, joueurId }` | R4/R5/admin | retire quelqu'un **de pas prêt** de la salle d'attente |
+| `salle:lancer` | `{ code }` | R4/R5/admin | lance la partie (≥ 2 joueurs, tous prêts) |
 | `salle:suivant` | `{ code }` | R4/R5/admin | termine le tour en cours, ou lance le suivant |
 | `salle:arreter` | `{ code }` | R4/R5/admin | arrête la partie (enregistrée sans gagnant) |
 | `jeu:action` | `{ code, donnees }` | joueur en jeu | joue son coup (une seule action par tour, sauf jeux de clics) |
@@ -110,6 +112,8 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 |---|---|
 | `salle:etat` | état complet de la salle (à chaque changement de phase) |
 | `salle:inscription` / `salle:desinscription` | `{ id, pseudo, nb }` en salle d'attente |
+| `salle:pret` | `{ id, pret, nbPrets, nb }` |
+| `salle:alerte` | `{ par }` — son + vibration chez les joueurs |
 | `jeu:aAgi` | `{ tour, essai, joueurId, pseudo, fini, public }` — ex. résultat du dé en direct |
 | `jeu:evenement` | `{ tour, essai, type, donnees }` — ex. feu vert, flash de couleur |
 | `salles:maj` | la liste des salles a changé |

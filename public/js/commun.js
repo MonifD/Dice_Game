@@ -138,6 +138,71 @@
     return socket;
   };
 
+  // ---------------------------------------------------------- sons et alertes
+  /**
+   * Sons générés par le navigateur (aucun fichier). Les navigateurs n'autorisent le son
+   * qu'après un premier clic sur la page : on « déverrouille » l'audio au premier geste.
+   */
+  let audio = null;
+  const contexteAudio = () => {
+    const C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return null;
+    audio ||= new C();
+    if (audio.state === 'suspended') audio.resume().catch(() => {});
+    return audio;
+  };
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => document.addEventListener(ev, contexteAudio, { once: true, passive: true }));
+
+  /** Joue une suite de notes : [[fréquence Hz, durée s], …]. */
+  const jouerNotes = (notes, volume = 0.25) => {
+    const ctx = contexteAudio();
+    if (!ctx) return;
+    let t = ctx.currentTime + 0.02;
+    for (const [freq, duree] of notes) {
+      if (freq) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(volume, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t); osc.stop(t + duree + 0.02);
+      }
+      t += duree;
+    }
+  };
+
+  /** Fait clignoter le titre de l'onglet tant que la page n'est pas regardée. */
+  let clignotement = null;
+  const clignoterTitre = (message) => {
+    if (!document.hidden || clignotement) return;
+    const titre = document.title;
+    let bascule = false;
+    clignotement = setInterval(() => { document.title = (bascule = !bascule) ? message : titre; }, 900);
+    document.addEventListener('visibilitychange', function stop() {
+      if (document.hidden) return;
+      clearInterval(clignotement); clignotement = null; document.title = titre;
+      document.removeEventListener('visibilitychange', stop);
+    });
+  };
+
+  LW.son = {
+    /** Alerte « la partie va commencer » : trois bips, vibration, titre qui clignote. */
+    alerte() {
+      jouerNotes([[880, 0.15], [0, 0.08], [880, 0.15], [0, 0.08], [1320, 0.35]]);
+      navigator.vibrate?.([200, 100, 200, 100, 400]);
+      clignoterTitre('🔔 Prépare-toi !');
+    },
+    /** Départ de la partie. */
+    depart() {
+      jouerNotes([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.4]]);
+      navigator.vibrate?.(300);
+      clignoterTitre('⚔ La partie commence !');
+    },
+  };
+
   /** Envoie un événement et attend la réponse du serveur. */
   LW.emettre = (ev, donnees = {}) => new Promise((resolve) => {
     LW._socket.timeout(8000).emit(ev, donnees, (err, rep) => resolve(err ? { ok: false, erreur: 'Pas de réponse du serveur.' } : rep));

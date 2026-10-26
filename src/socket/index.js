@@ -5,6 +5,8 @@
  *   salle:observer   { code }            rejoint la salle (joueur ou spectateur) et reçoit l'état
  *   salle:inscrire   { code }            s'inscrire en salle d'attente
  *   salle:quitter    { code }            quitter la salle d'attente
+ *   salle:pret       { code, pret }      se déclarer prêt (ou plus prêt) en salle d'attente
+ *   salle:alerter    { code }            (organisateur) faire sonner l'alerte chez tous les joueurs
  *   salle:exclure    { code, joueurId }  (organisateur) retirer quelqu'un de la salle d'attente
  *   salle:lancer     { code }            (organisateur) lancer la partie
  *   salle:suivant    { code }            (organisateur) finir le tour / lancer le tour suivant
@@ -18,7 +20,7 @@
  *   chat:muet        { joueurId, minutes } admins (0 = lever la sanction)
  *
  * Serveur -> client :
- *   salle:etat, salle:inscription, salle:desinscription, jeu:aAgi, jeu:evenement, salles:maj,
+ *   salle:etat, salle:inscription, salle:desinscription, salle:pret, salle:alerte, jeu:aAgi, jeu:evenement, salles:maj,
  *   chat:message, chat:supprime, chat:muet
  */
 const { Server } = require('socket.io');
@@ -107,6 +109,8 @@ function creerServeurSocket(httpServer) {
 
     socket.on('salle:inscrire', gestionnaire(socket, async ({ code }) => moteur.inscrire(normaliserCode(code), moi)));
     socket.on('salle:quitter', gestionnaire(socket, async ({ code }) => { await moteur.desinscrire(normaliserCode(code), moi.id); }));
+    socket.on('salle:pret', gestionnaire(socket, async ({ code, pret }) => moteur.definirPret(normaliserCode(code), moi.id, pret !== false)));
+    socket.on('salle:alerter', gestionnaire(socket, async ({ code }) => { await moteur.alerter(normaliserCode(code), moi.id); }));
     socket.on('salle:exclure', gestionnaire(socket, async ({ code, joueurId }) => {
       await moteur.desinscrire(normaliserCode(code), joueurId, moi.id);
     }));

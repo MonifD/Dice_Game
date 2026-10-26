@@ -150,7 +150,7 @@ class Moteur {
       if (etat.joueurs[id]) return { deja: true };
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie a déjà commencé : tu peux la suivre en spectateur.');
       if (etat.ordre.length >= config.maxJoueursParSalle) throw new ErreurJeu('La salle est pleine.');
-      etat.joueurs[id] = { pseudo: joueur.pseudo, statut: 'enJeu', tourElimination: null };
+      etat.joueurs[id] = { pseudo: joueur.pseudo, statut: 'enJeu', tourElimination: null, pret: false };
       etat.ordre.push(id);
       await this.ecrire(etat);
       return { nb: etat.ordre.length };
@@ -162,13 +162,14 @@ class Moteur {
     return r;
   }
 
-  /** Quitter la salle d'attente (ou en exclure quelqu'un, pour l'organisateur). */
+  /** Quitter la salle d'attente (ou en exclure quelqu'un de pas prêt, pour l'organisateur). */
   async desinscrire(code, joueurId, auteurId = joueurId) {
     const id = String(joueurId);
     if (String(auteurId) !== id) await this.exigerOrganisateur(auteurId);
     const nb = await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie a commencé : impossible de quitter la liste.');
       if (!etat.joueurs[id]) return null;
+      if (String(auteurId) !== id && etat.joueurs[id].pret) throw new ErreurJeu(`${etat.joueurs[id].pseudo} est prêt : on ne peut exclure que les joueurs pas prêts.`);
       delete etat.joueurs[id];
       etat.ordre = etat.ordre.filter((x) => x !== id);
       await this.ecrire(etat);
@@ -180,11 +181,42 @@ class Moteur {
     }
   }
 
+  /** Un inscrit se déclare prêt (ou plus prêt) en salle d'attente. */
+  async definirPret(code, joueurId, pret) {
+    const id = String(joueurId);
+    const r = await this.sousVerrou(code, async (etat) => {
+      if (etat.phase !== 'attente') throw new ErreurJeu('La partie a déjà commencé.');
+      if (!etat.joueurs[id]) throw new ErreurJeu('Inscris-toi d\'abord dans la salle.');
+      etat.joueurs[id].pret = !!pret;
+      await this.ecrire(etat);
+      return { pret: !!pret, nbPrets: etat.ordre.filter((x) => etat.joueurs[x].pret).length, nb: etat.ordre.length };
+    });
+    this.emettre(`salle:${code}`, 'salle:pret', { id, ...r });
+    return r;
+  }
+
+  /** L'organisateur fait sonner l'alerte chez tous les joueurs de la salle (une fois toutes les 10 s). */
+  async alerter(code, auteurId) {
+    const org = await this.exigerOrganisateur(auteurId);
+    await this.sousVerrou(code, async (etat) => {
+      if (etat.phase !== 'attente') throw new ErreurJeu('La partie a déjà commencé.');
+      if (etat.derniereAlerte && Date.now() - etat.derniereAlerte < 10000) throw new ErreurJeu('Alerte déjà envoyée, patiente quelques secondes.');
+      etat.derniereAlerte = Date.now();
+      await this.ecrire(etat);
+    });
+    this.emettre(`salle:${code}`, 'salle:alerte', { par: org.pseudo });
+  }
+
   async lancer(code, auteurId) {
     await this.exigerOrganisateur(auteurId);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie est déjà lancée.');
       if (etat.ordre.length < 2) throw new ErreurJeu('Il faut au moins 2 joueurs inscrits.');
+      const pasPrets = etat.ordre.filter((id) => !etat.joueurs[id].pret);
+      if (pasPrets.length) {
+        const noms = pasPrets.slice(0, 5).map((id) => etat.joueurs[id].pseudo).join(', ');
+        throw new ErreurJeu(`${pasPrets.length} joueur(s) pas encore prêt(s) : ${noms}${pasPrets.length > 5 ? '…' : ''}`);
+      }
       const mod = this.module(etat);
       const joueurs = etat.ordre.map((id) => ({ id, pseudo: etat.joueurs[id].pseudo }));
       etat.etatJeu = await mod.initialiser({ params: etat.params, joueurs, rng, outils: { prisma } });
