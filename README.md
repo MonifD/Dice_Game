@@ -170,6 +170,8 @@ impossible à truquer, mais une connexion très lente est légèrement désavant
 2. Dans `serveur.js` : change `id`, `nom`, `description`, `parametres`, et écris `initialiser`, `debutTour`,
    `action`, `resoudreTour` (interface commentée dans `src/minijeux/index.js`).
 3. Dans `client.js` : `LW.miniJeux['mon-jeu'] = { monter, resultat, … }`.
-4. Redémarre : le jeu apparaît dans la liste. Ajoute une stratégie de bot dans `tests/strategies.js` pour le test de charge.
+4. Redémarre : le jeu apparaît dans la liste.
+5. Tests : ajoute 1 ligne dans `tests/minijeux.test.js` (`donnees`) et 1 dans `tests/strategies.js`
+   (détails et exemple : [docs/CICD.md](docs/CICD.md), « Ajouter un mini-jeu : les tests »).
 
 Le moteur (salles, chrono, éliminations, rejeu, mort subite, gagnant, enregistrement) ne change pas.
