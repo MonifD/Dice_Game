@@ -289,8 +289,25 @@ class Moteur {
         throw new ErreurJeu('On ne peut changer ce réglage qu\'en salle d\'attente ou entre deux tours.');
       }
       etat.reglagesOrga = mod.commandeOrganisateur({ donnees, params: etat.params, prochainTour: this.prochainTour(etat) });
+      // fin de la pause « réglage » : le tour suivant repart 3 s après l'enregistrement
+      if (etat.pauseReglage) {
+        etat.pauseReglage = false;
+        if (etat.params.avanceAuto && etat.phase === 'resultats') etat.echeance = Date.now() + 3000;
+      }
       await this.ecrire(etat);
-      await this.diffuserEtat(etat);
+      this.apresTransition(etat);
+    });
+  }
+
+  /** L'organisateur commence à modifier un réglage entre deux tours : on suspend le compte à rebours. */
+  async pauseReglage(code, auteurId) {
+    await this.exigerOrganisateur(auteurId);
+    await this.sousVerrou(code, async (etat) => {
+      if (etat.phase !== 'resultats' || etat.pauseReglage || !etat.echeance || etat.gagnantAVenir) return;
+      etat.pauseReglage = true;
+      etat.echeance = null;
+      await this.ecrire(etat);
+      this.apresTransition(etat);
     });
   }
 
@@ -495,6 +512,7 @@ class Moteur {
 
   /** Après l'écran des résultats : annonce du gagnant, ou tour suivant. */
   async apresResultats(etat) {
+    etat.pauseReglage = false;
     if (etat.gagnantAVenir) {
       const id = etat.gagnantAVenir;
       etat.gagnantAVenir = null;
@@ -639,7 +657,7 @@ class Moteur {
       },
       jeuActif: { id: mod.id, nom: mod.nom, actionRequise: mod.actionRequise !== false },
       departage: etat.departage, params: etat.params, organisateur: etat.organisateur, objet: etat.objet || null, dateObjet: etat.dateObjet || null,
-      reglagesOrga: etat.reglagesOrga || null, prochainTour: this.prochainTour(etat),
+      reglagesOrga: etat.reglagesOrga || null, prochainTour: this.prochainTour(etat), pauseReglage: !!etat.pauseReglage,
       peutRegler: etat.phase === 'attente' || (etat.phase === 'resultats' && !etat.departage && !etat.departageAVenir && !etat.gagnantAVenir),
       joueurs: etat.ordre.map((id) => ({ id, ...etat.joueurs[id] })),
       tour: etat.tour, essai: etat.essai, tourCourant,

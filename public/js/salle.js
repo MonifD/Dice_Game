@@ -244,7 +244,8 @@
         aide = 'Le gagnant est annoncé automatiquement à la fin du compte à rebours.';
       } else {
         b.push('<button class="btn principal" data-o="suivant">▶ Tour suivant</button>');
-        aide = etat.echeance ? 'Le tour suivant démarre automatiquement.' : 'Mode manuel : lance le tour suivant quand tu veux.';
+        aide = etat.pauseReglage ? '⏸ Compte à rebours en pause : enregistre les options (le tour suivant démarre 3 s après) ou lance-le avec « Tour suivant ».'
+          : etat.echeance ? 'Le tour suivant démarre automatiquement.' : 'Mode manuel : lance le tour suivant quand tu veux.';
       }
     }
     b.push('<button class="btn danger" data-o="arreter">■ Arrêter</button>');
@@ -276,6 +277,8 @@
     try {
       mod.orga(zone, {
         etat, moi, pseudo,
+        // suspend le compte à rebours entre deux tours (une fois), le temps de taper
+        pause: () => { if (etat.phase === 'resultats' && etat.echeance && !etat.pauseReglage) LW.emettre('jeu:orgaPause', { code }); },
         envoyer: async (donnees) => {
           const rep = await LW.emettre('jeu:orga', { code, donnees });
           toast(rep.ok ? '✅ Réglage enregistré pour le prochain tour.' : rep.erreur, rep.ok ? 'ok' : 'erreur');
@@ -483,7 +486,10 @@
         const s = Math.max(0, Math.ceil((etat.echeance - maintenant()) / 1000));
         el.textContent = r.final ? `Annonce du gagnant dans ${s} s…` : `Tour suivant dans ${s} s…`;
         setTimeout(prochain, 250);
-      } else el.textContent = 'En attente de l\'organisateur pour le tour suivant.';
+      } else {
+        el.textContent = etat.pauseReglage ? '⏸ L\'organisateur modifie les options du prochain tour…' : 'En attente de l\'organisateur pour le tour suivant.';
+        setTimeout(prochain, 500); // le compte à rebours peut reprendre (fin de pause)
+      }
     };
     prochain();
   }

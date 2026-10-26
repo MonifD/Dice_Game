@@ -21,6 +21,7 @@
           <button class="btn petit">Enregistrer pour le tour ${t}</button>
         </div></form>`;
       const form = zone.querySelector('form');
+      form.querySelectorAll('input').forEach((i) => i.addEventListener('focus', () => ctx.pause?.(), { once: true }));
       form.onsubmit = async (ev) => {
         ev.preventDefault();
         const bouton = form.querySelector('button');
