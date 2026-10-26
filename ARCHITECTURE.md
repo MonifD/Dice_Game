@@ -140,7 +140,8 @@ Phases d'une salle : `attente → tour → resultats → tour → … → termin
    peuvent jouer en même temps). Le tour se termine quand tout le monde a fini (2 s plus tard, pour laisser voir le dernier coup) **ou** au chrono (+0,6 s de tolérance réseau).
 4. **Résolution** (sous verrou, une seule instance) : `resoudreTour()` du mini-jeu, puis règles communes :
    * absent (n'a pas joué) = éliminé ;
-   * plus aucun survivant → **le tour est rejoué** entre les mêmes joueurs (l'état du jeu est restauré) ;
+   * plus aucun survivant parmi ceux qui ont joué → **le tour est rejoué entre eux** (l'état du jeu est restauré) ;
+     les absents sont quand même éliminés ; si un seul joueur a joué, il passe ; si personne n'a joué, tout le monde rejoue ;
    * 5 rejeux d'affilée, `toursMax` atteint, ou mini-jeu épuisé (`estTermine`) avec plusieurs survivants → **mort subite** ;
    * un seul survivant → **manche décisive** : l'écran des résultats de ce tour s'affiche d'abord (toujours
      automatiquement), puis le **gagnant** est annoncé et enregistré en base (gagnant, positions, tours atteints).

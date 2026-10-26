@@ -320,3 +320,8 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 /* réglages d'un mini-jeu dans le panneau d'organisation */
 #orga-jeu:not(:empty) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--bord); }
 .titre-reglage { font-weight: 600; margin-bottom: 8px; }
+
+/* rappel pendant le tour : ne pas jouer = éliminé */
+.rappel-absent { text-align: center; font-size: .88rem; color: var(--texte-2); margin: 6px 0 0; }
+.rappel-absent.urgent { color: #ff8a8a; font-weight: 700; animation: clignote 1s infinite; }
+@keyframes clignote { 50% { opacity: .45; } }

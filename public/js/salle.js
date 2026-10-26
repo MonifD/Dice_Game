@@ -353,6 +353,7 @@
         <div class="muet petit" id="compteur-tour"></div>
         ${tc.public?.consigne ? `<div class="consigne">${echapper(tc.public.consigne)}</div>` : ''}
         ${spectateur ? `<div class="etiquette-spectateur">👀 Mode spectateur${monJoueur()?.statut === 'elimine' ? ' : tu as été éliminé, tu ne peux plus jouer' : ''}</div>` : ''}
+        ${ctx.peutJouer ? '<div class="rappel-absent" id="rappel-absent">⏱ Joue avant la fin du chrono : si tu ne joues pas (aucun choix), tu es éliminé.</div>' : ''}
         <div class="zone-jeu ${spectateur ? 'spectateur' : ''}" id="zone-jeu"></div>
         <h3 style="margin-top:10px" class="${etat.jeuActif.actionRequise ? '' : 'cache'}">En direct</h3>
         <div class="fil" id="fil"></div>`;
@@ -372,6 +373,9 @@
     if (!tc || !el) return;
     const enJeu = etat.joueurs.filter((j) => j.statut === 'enJeu').length;
     if (etat.jeuActif.actionRequise) el.textContent = `${tc.actions.filter((a) => a.fini).length} / ${enJeu} joueurs ont joué`;
+    // le rappel « joue sinon tu es éliminé » disparaît dès que j'ai joué
+    const aJoue = tc.actions.some((a) => a.joueurId === String(moi.id) && a.fini);
+    $('#rappel-absent')?.classList.toggle('cache', aJoue);
   }
 
   function demarrerChrono() {
@@ -387,6 +391,7 @@
       barre.style.backgroundPosition = `${(1 - reste / total) * 100}% 0`;
       texte.textContent = `${Math.ceil(reste / 1000)} s`;
       texte.classList.toggle('urgent', reste < 5000 && reste > 0);
+      $('#rappel-absent')?.classList.toggle('urgent', reste < 5000);
     };
     tic();
     minuteurChrono = setInterval(tic, 200);

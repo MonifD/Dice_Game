@@ -427,34 +427,45 @@ class Moteur {
       res = await mod.resoudreTour({ etat: etat.etatJeu, actions, enJeu, params: etat.params, rng, tour: tc.numero });
     }
     // Sécurité : un survivant doit être en jeu et (si une action est requise) avoir joué.
-    const survivants = [...new Set((res.survivants || []).map(String))]
+    let survivants = [...new Set((res.survivants || []).map(String))]
       .filter((id) => enJeu.includes(id) && (!actionRequise || id in actions));
+    const ontJoue = enJeu.filter((id) => !absents.includes(id));
+    let message = res.message || null;
 
+    // Personne parmi ceux qui ont joué ne survit :
+    //  - personne n'a joué du tout          -> tour rejoué entre tous (sinon il ne resterait personne) ;
+    //  - un seul joueur a joué              -> il passe (les absents sont éliminés) ;
+    //  - plusieurs ont joué                 -> tour rejoué entre EUX ; les absents sont quand même éliminés.
+    if (survivants.length === 0 && ontJoue.length === 1) {
+      survivants = ontJoue;
+      message = `${message ? message + ' ' : ''}${etat.joueurs[ontJoue[0]].pseudo} est le seul à avoir joué : il passe.`;
+    }
     const rejoue = survivants.length === 0;
-    const elimines = rejoue ? [] : enJeu.filter((id) => !survivants.includes(id));
-    if (!rejoue) {
-      etat.etatJeu = res.etat ?? etat.etatJeu; // en cas de rejeu, on garde l'état d'avant le tour
-      for (const id of elimines) {
-        etat.joueurs[id].statut = 'elimine';
-        etat.joueurs[id].tourElimination = tc.numero;
-      }
+    const elimines = rejoue ? (ontJoue.length ? absents : []) : enJeu.filter((id) => !survivants.includes(id));
+    if (!rejoue) etat.etatJeu = res.etat ?? etat.etatJeu; // en cas de rejeu, on garde l'état d'avant le tour
+    for (const id of elimines) {
+      etat.joueurs[id].statut = 'elimine';
+      etat.joueurs[id].tourElimination = tc.numero;
     }
 
-    let message = res.message || null;
     if (rejoue) {
-      message = `${res.message ? res.message + ' ' : ''}${absents.length === enJeu.length
+      message = `${res.message ? res.message + ' ' : ''}${!ontJoue.length
         ? 'Personne n\'a joué : le tour est rejoué.'
-        : 'Tous les joueurs restants seraient éliminés : le tour est rejoué entre eux.'}`;
+        : `Tous ceux qui ont joué seraient éliminés : le tour est rejoué entre eux.${absents.length ? ` ${absents.length > 1 ? 'Les absents sont éliminés' : 'L\'absent est éliminé'}.` : ''}`}`;
       // Garde-fou : trop de rejeux d'affilée (ex. tout le monde mise pareil) -> mort subite
       if (etat.essai + 1 >= MAX_REJEUX && !etat.departage && absents.length < enJeu.length) {
         etat.departageAVenir = true;
         message += ' Trop d\'égalités : place à la mort subite !';
+      } else if (elimines.length && !etat.departage && typeof mod.estTermine === 'function' && mod.estTermine({ etat: etat.etatJeu, enJeu: ontJoue })) {
+        // les absents partis, le mini-jeu ne peut plus départager ceux qui restent (ex. minorité à 2)
+        etat.departageAVenir = true;
+        message = `${res.message ? res.message + ' ' : ''}${absents.length > 1 ? 'Les absents sont éliminés' : 'L\'absent est éliminé'}. Place à la mort subite entre les ${ontJoue.length} joueurs restants !`;
       }
     }
 
     etat.dernierResultat = {
       tour: tc.numero, essai: tc.essai, departage: etat.departage, resoluLe: Date.now(), final: false,
-      survivants: rejoue ? enJeu : survivants, elimines, absents: rejoue ? [] : absents, rejoue, message,
+      survivants: rejoue ? (ontJoue.length ? ontJoue : enJeu) : survivants, elimines, absents: rejoue && !ontJoue.length ? [] : absents, rejoue, message,
       details: res.details ?? null,
     };
     etat.tourCourant = null;
