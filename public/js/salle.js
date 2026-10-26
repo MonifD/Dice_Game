@@ -228,8 +228,13 @@
       b.push('<button class="btn" data-o="suivant">⏭ Terminer le tour maintenant</button>');
       aide = 'Les joueurs qui n\'ont pas joué à la fin du tour sont éliminés.';
     } else if (etat.phase === 'resultats') {
-      b.push('<button class="btn principal" data-o="suivant">▶ Tour suivant</button>');
-      aide = etat.echeance ? 'Le tour suivant démarre automatiquement.' : 'Mode manuel : lance le tour suivant quand tu veux.';
+      if (etat.dernierResultat?.final) {
+        b.push('<button class="btn principal" data-o="suivant">🏆 Annoncer le gagnant</button>');
+        aide = 'Le gagnant est annoncé automatiquement à la fin du compte à rebours.';
+      } else {
+        b.push('<button class="btn principal" data-o="suivant">▶ Tour suivant</button>');
+        aide = etat.echeance ? 'Le tour suivant démarre automatiquement.' : 'Mode manuel : lance le tour suivant quand tu veux.';
+      }
     }
     b.push('<button class="btn danger" data-o="arreter">■ Arrêter</button>');
     $('#orga-boutons').innerHTML = b.join('');
@@ -254,6 +259,7 @@
   function rendreScene() {
     const scene = $('#scene');
     if (etat.phase !== 'tour') { demonterModule(); arreterChrono(); }
+    if (etat.phase !== 'resultats') { delete scene.dataset.resultats; clearTimeout(minuteurRevelation); }
     if (etat.phase === 'attente') return sceneAttente(scene);
     if (etat.phase === 'tour') return sceneTour(scene);
     if (etat.phase === 'resultats') return sceneResultats(scene);
@@ -360,33 +366,57 @@
   }
 
   // --- résultats
+  let minuteurRevelation = null;
   function sceneResultats(scene) {
     const r = etat.dernierResultat;
+    const cle = `${r.tour}:${r.essai}:${r.departage}`;
+    if (scene.dataset.resultats === cle) return; // déjà affiché : ne pas relancer l'animation
+    scene.dataset.resultats = cle;
+    clearTimeout(minuteurRevelation);
+
     const moiId = String(moi.id);
     const jeSurvis = r.survivants.includes(moiId);
     const jeSuisElimine = r.elimines.includes(moiId);
     const absents = new Set(r.absents);
+    const gagnantId = r.final ? r.survivants[0] : null;
+    // Temps de révélation (ex. cartes retournées une à une) : messages et listes n'apparaissent qu'après.
+    const revelationMs = r.details?.revelationMs || 0;
+    const ecouleMs = Math.max(0, maintenant() - (r.resoluLe || 0));
+    const resteMs = Math.max(0, revelationMs - ecouleMs);
     const puces = (ids, cls = '') => ids.map((id) => `<span class="puce ${id === moiId ? 'moi' : ''} ${cls}">${echapper(pseudo(id))}${absents.has(id) ? ' <span class="muet petit">(absent)</span>' : ''}</span>`).join('') || '<span class="muet">—</span>';
     scene.innerHTML = `
-      <h2>${r.departage ? '⚡ Mort subite' : `Tour ${r.tour}`} — résultats</h2>
-      ${r.message ? `<div class="consigne">${echapper(r.message)}</div>` : ''}
-      ${jeSurvis && !r.rejoue ? '<div class="bandeau qualifie">✅ Tu passes au tour suivant !</div>' : ''}
-      ${jeSuisElimine ? `<div class="bandeau elimine">💀 Tu es éliminé${absents.has(moiId) ? ' (tu n\'as pas joué à temps)' : ''}.</div>` : ''}
+      <h2>${r.departage ? '⚡ Mort subite' : `Tour ${r.tour}`} — ${r.final ? 'manche décisive' : 'résultats'}</h2>
+      <div class="apres-revelation">
+        ${r.message ? `<div class="consigne">${echapper(r.message)}</div>` : ''}
+        ${gagnantId ? `<div class="bandeau qualifie">🏆 ${gagnantId === moiId ? 'Tu remportes la partie !' : `${echapper(pseudo(gagnantId))} remporte la partie !`}</div>`
+          : jeSurvis && !r.rejoue ? '<div class="bandeau qualifie">✅ Tu passes au tour suivant !</div>' : ''}
+        ${jeSuisElimine ? `<div class="bandeau elimine">💀 Tu es éliminé${absents.has(moiId) ? ' (tu n\'as pas joué à temps)' : ''}.</div>` : ''}
+      </div>
+      ${resteMs > 0 ? '<p class="muet petit suspense" style="text-align:center">Révélation en cours…</p>' : ''}
       <div id="details-jeu" class="zone-jeu" style="min-height:0"></div>
-      <div class="resultats-listes">
-        <div><h3>✅ Qualifiés (${r.survivants.length})</h3><div class="puces">${puces(r.survivants)}</div></div>
+      <div class="resultats-listes apres-revelation">
+        <div><h3>${gagnantId ? '🏆 Gagnant' : `✅ Qualifiés (${r.survivants.length})`}</h3><div class="puces">${puces(r.survivants)}</div></div>
         <div><h3>💀 Éliminés (${r.elimines.length})</h3><div class="puces">${puces(r.elimines)}</div></div>
       </div>
       <p class="muet petit" id="prochain" style="text-align:center;margin-top:16px"></p>`;
     const mod = LW.miniJeux[r.departage ? '_departage' : etat.miniJeu.id];
     if (r.details && mod?.resultat) {
-      try { mod.resultat($('#details-jeu'), r.details, contexte()); } catch (e) { console.error(e); }
+      try { mod.resultat($('#details-jeu'), r.details, { ...contexte(), revelation: { ecouleMs, resteMs } }); } catch (e) { console.error(e); }
+    }
+    const blocs = $$('.apres-revelation', scene);
+    if (resteMs > 0) {
+      blocs.forEach((b) => b.classList.add('masque'));
+      minuteurRevelation = setTimeout(() => {
+        blocs.forEach((b) => { b.classList.remove('masque'); b.classList.add('apparait'); });
+        $('.suspense', scene)?.remove();
+      }, resteMs);
     }
     const prochain = () => {
       const el = $('#prochain');
-      if (!el || etat.phase !== 'resultats') return;
+      if (!el || etat.phase !== 'resultats' || etat.dernierResultat?.resoluLe !== r.resoluLe) return;
       if (etat.echeance) {
-        el.textContent = `Tour suivant dans ${Math.max(0, Math.ceil((etat.echeance - maintenant()) / 1000))} s…`;
+        const s = Math.max(0, Math.ceil((etat.echeance - maintenant()) / 1000));
+        el.textContent = r.final ? `Annonce du gagnant dans ${s} s…` : `Tour suivant dans ${s} s…`;
         setTimeout(prochain, 250);
       } else el.textContent = 'En attente de l\'organisateur pour le tour suivant.';
     };

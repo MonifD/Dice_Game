@@ -307,3 +307,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .choix-objet input[value="VIP"]:checked + span { border-color: #b07cff; background: rgba(176, 124, 255, .12); color: #c9a6ff; }
 .choix-objet input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 #filtres .btn.actif { border-color: var(--accent); color: var(--accent-2); }
+
+/* écran des résultats : contenu révélé après l'animation du mini-jeu */
+.apres-revelation.masque { visibility: hidden; opacity: 0; }
+.apres-revelation.apparait { animation: monte .35s ease-out; }

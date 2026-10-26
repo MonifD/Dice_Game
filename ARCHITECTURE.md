@@ -141,8 +141,11 @@ Phases d'une salle : `attente → tour → resultats → tour → … → termin
    * absent (n'a pas joué) = éliminé ;
    * plus aucun survivant → **le tour est rejoué** entre les mêmes joueurs (l'état du jeu est restauré) ;
    * 5 rejeux d'affilée, `toursMax` atteint, ou mini-jeu épuisé (`estTermine`) avec plusieurs survivants → **mort subite** ;
-   * un seul survivant → **gagnant**, enregistrement en base (gagnant, positions, tours atteints).
+   * un seul survivant → **manche décisive** : l'écran des résultats de ce tour s'affiche d'abord (toujours
+     automatiquement), puis le **gagnant** est annoncé et enregistré en base (gagnant, positions, tours atteints).
 5. **Résultats** : écran commun + détails du mini-jeu, puis tour suivant automatique (ou manuel).
+   Un mini-jeu peut demander un temps d'animation (`details.revelationMs`, ex. cartes retournées une à une) :
+   il s'ajoute à la pause, et le message et les listes qualifiés / éliminés n'apparaissent qu'après.
 
 **Multi-instances** : chaque transition prend un verrou Redis (`SET NX PX`) ; chaque instance vérifie
 les échéances toutes les secondes, donc si l'instance qui gérait un tour disparaît, une autre prend le relais.

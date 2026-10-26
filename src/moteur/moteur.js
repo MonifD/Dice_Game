@@ -153,7 +153,7 @@ class Moteur {
       joueurs: {}, ordre: [],
       tour: 0, essai: 0, departage: false, departageAVenir: false,
       etatJeu: null, tourCourant: null, dernierResultat: null, echeance: null,
-      gagnant: null, annulee: false,
+      gagnant: null, gagnantAVenir: null, annulee: false,
     };
     await this.ecrire(etat);
     await stockage.sadd('salles:actives', code);
@@ -262,7 +262,7 @@ class Moteur {
     await this.exigerOrganisateur(auteurId);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase === 'tour') await this.resoudreTour(etat);
-      else if (etat.phase === 'resultats') await this.demarrerTour(etat);
+      else if (etat.phase === 'resultats') await this.apresResultats(etat);
       else throw new ErreurJeu('Rien à faire passer maintenant.');
       await this.ecrire(etat);
       this.apresTransition(etat);
@@ -426,14 +426,21 @@ class Moteur {
     }
 
     etat.dernierResultat = {
-      tour: tc.numero, essai: tc.essai, departage: etat.departage,
+      tour: tc.numero, essai: tc.essai, departage: etat.departage, resoluLe: Date.now(), final: false,
       survivants: rejoue ? enJeu : survivants, elimines, absents: rejoue ? [] : absents, rejoue, message,
       details: res.details ?? null,
     };
     etat.tourCourant = null;
+    // Temps d'animation demandé par le mini-jeu (ex. cartes retournées une à une) : ajouté à la pause.
+    const revelationMs = Math.min(15000, Math.max(0, Number(res.details?.revelationMs) || 0));
+    etat.phase = 'resultats';
 
+    // Dernier survivant : on montre d'abord les résultats de la manche décisive, puis le gagnant
+    // (toujours automatiquement, même en mode manuel ; l'organisateur peut accélérer).
     if (!rejoue && survivants.length === 1) {
-      await this.terminer(etat, survivants[0]);
+      etat.gagnantAVenir = survivants[0];
+      etat.dernierResultat.final = true;
+      etat.echeance = Date.now() + revelationMs + Math.max(4, etat.params.pauseResultats) * 1000;
       return;
     }
     // Plusieurs joueurs mais le jeu est « fini » (plus de questions, tours max…) -> mort subite.
@@ -445,8 +452,16 @@ class Moteur {
         etat.dernierResultat.message = `${message ? message + ' ' : ''}Égalité entre ${survivants.length} joueurs : place à la mort subite !`;
       }
     }
-    etat.phase = 'resultats';
-    etat.echeance = etat.params.avanceAuto ? Date.now() + etat.params.pauseResultats * 1000 : null;
+    etat.echeance = etat.params.avanceAuto ? Date.now() + revelationMs + etat.params.pauseResultats * 1000 : null;
+  }
+
+  /** Après l'écran des résultats : annonce du gagnant, ou tour suivant. */
+  async apresResultats(etat) {
+    if (etat.gagnantAVenir) {
+      const id = etat.gagnantAVenir;
+      etat.gagnantAVenir = null;
+      await this.terminer(etat, id);
+    } else await this.demarrerTour(etat);
   }
 
   async terminer(etat, gagnantId) {
@@ -529,7 +544,7 @@ class Moteur {
         }
         if (tousOntJoue || maintenant >= etat.echeance) { await this.resoudreTour(etat); change = true; }
       } else if (etat.phase === 'resultats' && etat.echeance && maintenant >= etat.echeance) {
-        await this.demarrerTour(etat);
+        await this.apresResultats(etat);
         change = true;
       }
       if (change) {
