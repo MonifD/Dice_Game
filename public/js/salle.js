@@ -305,6 +305,8 @@
     if (cle !== cleMontee) {
       demonterModule();
       cleMontee = cle;
+      // éliminé ou simple spectateur dans un jeu où il faut agir : la zone de jeu n'est pas cliquable
+      const spectateur = !ctx.peutJouer && etat.jeuActif.actionRequise;
       moduleMonte = LW.miniJeux[etat.jeuActif.id] || {};
       scene.innerHTML = `
         <div class="ligne espace">
@@ -314,7 +316,8 @@
         <div class="chrono"><div id="chrono-barre" style="width:100%"></div></div>
         <div class="muet petit" id="compteur-tour"></div>
         ${tc.public?.consigne ? `<div class="consigne">${echapper(tc.public.consigne)}</div>` : ''}
-        <div class="zone-jeu" id="zone-jeu"></div>
+        ${spectateur ? `<div class="etiquette-spectateur">👀 Mode spectateur${monJoueur()?.statut === 'elimine' ? ' : tu as été éliminé, tu ne peux plus jouer' : ''}</div>` : ''}
+        <div class="zone-jeu ${spectateur ? 'spectateur' : ''}" id="zone-jeu"></div>
         <h3 style="margin-top:10px" class="${etat.jeuActif.actionRequise ? '' : 'cache'}">En direct</h3>
         <div class="fil" id="fil"></div>`;
       try { moduleMonte.monter?.($('#zone-jeu'), ctx); } catch (e) { console.error(e); $('#zone-jeu').textContent = 'Erreur d\'affichage du mini-jeu.'; }

@@ -311,3 +311,8 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 /* écran des résultats : contenu révélé après l'animation du mini-jeu */
 .apres-revelation.masque { visibility: hidden; opacity: 0; }
 .apres-revelation.apparait { animation: monte .35s ease-out; }
+
+/* mode spectateur (éliminés et spectateurs) : zone de jeu visible mais non cliquable */
+.zone-jeu.spectateur { pointer-events: none; opacity: .55; filter: grayscale(.4); }
+.etiquette-spectateur { align-self: center; margin: 6px auto 0; padding: 6px 14px; border-radius: 99px; font-weight: 600; font-size: .9rem;
+  background: rgba(78, 161, 255, .12); color: #8cc2ff; border: 1px solid rgba(78, 161, 255, .3); width: fit-content; }
