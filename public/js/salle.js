@@ -142,6 +142,7 @@
     const ancienne = etat?.phase;
     etat = nouvel;
     if (etat.phase === 'tour') await chargerModule(etat.jeuActif.id);
+    else if (etat.phase === 'attente' && organisateur) await chargerModule(etat.miniJeu.id); // réglages éventuels du mini-jeu
     else if (etat.phase === 'resultats' && etat.dernierResultat) await chargerModule(etat.dernierResultat.departage ? '_departage' : etat.miniJeu.id);
     if (!premier && ancienne !== etat.phase && etat.phase === 'termine' && etat.gagnant?.id === String(moi.id)) toast('🏆 Tu as gagné !', 'ok');
     if (!premier && ancienne === 'attente' && etat.phase === 'tour' && monJoueur()) LW.son.depart();
@@ -249,6 +250,7 @@
     b.push('<button class="btn danger" data-o="arreter">■ Arrêter</button>');
     $('#orga-boutons').innerHTML = b.join('');
     $('#orga-aide').textContent = aide;
+    rendreReglagesJeu();
     $$('#orga-boutons [data-o]').forEach((el) => (el.onclick = async () => {
       const o = el.dataset.o;
       if (o === 'arreter' && !confirm('Arrêter la partie ? Elle sera enregistrée sans gagnant.')) return;
@@ -257,6 +259,30 @@
       if (!rep.ok) { toast(rep.erreur, 'erreur'); el.disabled = false; }
       else if (o === 'alerter') { toast('🔔 Alerte envoyée à tous les joueurs de la salle.', 'ok'); setTimeout(() => { el.disabled = false; }, 10000); }
     }));
+  }
+
+  /**
+   * Réglages du mini-jeu pour le prochain tour (ex. options A / B de « La minorité »), fournis par
+   * LW.miniJeux[id].orga(zone, ctx). Redessinés seulement quand ils changent (pour ne pas effacer la saisie).
+   */
+  function rendreReglagesJeu() {
+    const zone = $('#orga-jeu');
+    const mod = LW.miniJeux[etat.miniJeu.id];
+    const cle = etat.peutRegler && mod?.orga ? `${etat.phase}:${etat.prochainTour}:${JSON.stringify(etat.reglagesOrga)}` : '';
+    if (zone.dataset.cle === cle) return;
+    zone.dataset.cle = cle;
+    zone.innerHTML = '';
+    if (!cle) return;
+    try {
+      mod.orga(zone, {
+        etat, moi, pseudo,
+        envoyer: async (donnees) => {
+          const rep = await LW.emettre('jeu:orga', { code, donnees });
+          toast(rep.ok ? '✅ Réglage enregistré pour le prochain tour.' : rep.erreur, rep.ok ? 'ok' : 'erreur');
+          return rep;
+        },
+      });
+    } catch (e) { console.error(e); }
   }
 
   function arreterChrono() { clearInterval(minuteurChrono); minuteurChrono = null; }
@@ -287,7 +313,7 @@
       <div class="pile" style="align-items:center;text-align:center;padding:10px 0">
         <div style="font-size:64px">${etat.miniJeu.icone}</div>
         <p class="muet" style="max-width:520px">${echapper(etat.miniJeu.description)}</p>
-        <div class="puces" style="justify-content:center">${params.map(([k, v]) => `<span class="badge">${echapper(libelleParam(k))} : <b>${echapper(String(v === true ? 'oui' : v === false ? 'non' : v))}</b></span>`).join('')}</div>
+        <div class="puces" style="justify-content:center">${params.filter(([, v]) => v !== '').map(([k, v]) => `<span class="badge">${echapper(libelleParam(k))} : <b>${echapper(String(v === true ? 'oui' : v === false ? 'non' : String(v).includes('\n') || String(v).length > 40 ? `${String(v).split('\n').filter((l) => l.trim()).length} tour(s) préparé(s)` : v))}</b></span>`).join('')}</div>
         <div class="grand-texte" style="font-size:3rem;margin-top:10px">${prets} / ${n}</div>
         <div class="muet" style="margin-top:-14px">joueur(s) prêt(s)</div>
         ${inscrit ? '' : '<button class="btn principal geant" id="btn-rejoindre">⚔ Rejoindre la partie</button>'}

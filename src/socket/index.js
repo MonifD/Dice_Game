@@ -12,6 +12,7 @@
  *   salle:suivant    { code }            (organisateur) finir le tour / lancer le tour suivant
  *   salle:arreter    { code }            (organisateur) arrêter la partie
  *   jeu:action       { code, donnees }   jouer son coup
+ *   jeu:orga         { code, donnees }   (organisateur) réglage du mini-jeu pour le prochain tour (ex. options A / B)
  *   accueil:suivre   {}                  recevoir les mises à jour de la liste des salles
  *   chat:rejoindre   { canal }           'general' ou 'salle:<code>' -> 100 derniers messages
  *   chat:quitter     { canal }
@@ -117,6 +118,7 @@ function creerServeurSocket(httpServer) {
     socket.on('salle:lancer', gestionnaire(socket, async ({ code }) => { await moteur.lancer(normaliserCode(code), moi.id); }));
     socket.on('salle:suivant', gestionnaire(socket, async ({ code }) => { await moteur.suivant(normaliserCode(code), moi.id); }));
     socket.on('salle:arreter', gestionnaire(socket, async ({ code }) => { await moteur.arreter(normaliserCode(code), moi.id); }));
+    socket.on('jeu:orga', gestionnaire(socket, async ({ code, donnees }) => { await moteur.commandeOrga(normaliserCode(code), moi.id, donnees); }));
     socket.on('jeu:action', gestionnaire(socket, async ({ code, donnees }) => moteur.agir(normaliserCode(code), moi.id, donnees)));
 
     // ------------------------------------------------------------ chat

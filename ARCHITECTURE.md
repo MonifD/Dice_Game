@@ -100,6 +100,7 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `salle:lancer` | `{ code }` | R4/R5/admin | lance la partie (≥ 2 joueurs, tous prêts) |
 | `salle:suivant` | `{ code }` | R4/R5/admin | termine le tour en cours, ou lance le suivant |
 | `salle:arreter` | `{ code }` | R4/R5/admin | arrête la partie (enregistrée sans gagnant) |
+| `jeu:orga` | `{ code, donnees }` | R4/R5/admin | réglage du mini-jeu pour le prochain tour, en salle d'attente ou entre deux tours (ex. options A / B de la minorité) |
 | `jeu:action` | `{ code, donnees }` | joueur en jeu | joue son coup (une seule action par tour, sauf jeux de clics) |
 | `accueil:suivre` | – | tous | reçoit `salles:maj` quand la liste change |
 | `chat:rejoindre` | `{ canal }` | tous | `general` ou `salle:<code>` ; renvoie les 100 derniers messages |

@@ -154,7 +154,7 @@ class Moteur {
       joueurs: {}, ordre: [],
       tour: 0, essai: 0, departage: false, departageAVenir: false,
       etatJeu: null, tourCourant: null, dernierResultat: null, echeance: null,
-      gagnant: null, gagnantAVenir: null, annulee: false,
+      gagnant: null, gagnantAVenir: null, annulee: false, reglagesOrga: null,
     };
     await this.ecrire(etat);
     await stockage.sadd('salles:actives', code);
@@ -238,7 +238,7 @@ class Moteur {
       }
       const mod = this.module(etat);
       const joueurs = etat.ordre.map((id) => ({ id, pseudo: etat.joueurs[id].pseudo }));
-      etat.etatJeu = await mod.initialiser({ params: etat.params, joueurs, rng, outils: { prisma } });
+      etat.etatJeu = await mod.initialiser({ params: etat.params, joueurs, rng, outils: { prisma }, reglages: etat.reglagesOrga });
       etat.debutLe = Date.now();
 
       try {
@@ -267,6 +267,30 @@ class Moteur {
       else throw new ErreurJeu('Rien à faire passer maintenant.');
       await this.ecrire(etat);
       this.apresTransition(etat);
+    });
+  }
+
+  /** Numéro du prochain tour (le même si le tour est rejoué). */
+  prochainTour(etat) {
+    if (etat.phase === 'attente') return 1;
+    return etat.dernierResultat?.rejoue ? etat.tour : etat.tour + 1;
+  }
+
+  /**
+   * Réglage du mini-jeu par l'organisateur pour le prochain tour (ex. options A / B de « La minorité »),
+   * en salle d'attente ou sur l'écran des résultats. Le module valide via commandeOrganisateur().
+   */
+  async commandeOrga(code, auteurId, donnees) {
+    await this.exigerOrganisateur(auteurId);
+    await this.sousVerrou(code, async (etat) => {
+      const mod = registre.obtenir(etat.miniJeu);
+      if (typeof mod.commandeOrganisateur !== 'function') throw new ErreurJeu('Ce mini-jeu n\'a pas de réglage en cours de partie.');
+      if (!['attente', 'resultats'].includes(etat.phase) || etat.departage || etat.departageAVenir || etat.gagnantAVenir) {
+        throw new ErreurJeu('On ne peut changer ce réglage qu\'en salle d\'attente ou entre deux tours.');
+      }
+      etat.reglagesOrga = mod.commandeOrganisateur({ donnees, params: etat.params, prochainTour: this.prochainTour(etat) });
+      await this.ecrire(etat);
+      await this.diffuserEtat(etat);
     });
   }
 
@@ -362,7 +386,7 @@ class Moteur {
     const mod = this.module(etat);
     const enJeu = this.idsEnJeu(etat);
     const r = (await mod.debutTour({
-      etat: etat.etatJeu, tour: etat.tour, essai: etat.essai, enJeu, params: etat.params, rng,
+      etat: etat.etatJeu, tour: etat.tour, essai: etat.essai, enJeu, params: etat.params, rng, reglages: etat.reglagesOrga,
     })) || {};
     if (r.etat !== undefined) etat.etatJeu = r.etat;
 
@@ -601,6 +625,8 @@ class Moteur {
       miniJeu: { id: base.id, nom: base.nom, icone: base.icone || '🎮', description: base.description },
       jeuActif: { id: mod.id, nom: mod.nom, actionRequise: mod.actionRequise !== false },
       departage: etat.departage, params: etat.params, organisateur: etat.organisateur, objet: etat.objet || null, dateObjet: etat.dateObjet || null,
+      reglagesOrga: etat.reglagesOrga || null, prochainTour: this.prochainTour(etat),
+      peutRegler: etat.phase === 'attente' || (etat.phase === 'resultats' && !etat.departage && !etat.departageAVenir && !etat.gagnantAVenir),
       joueurs: etat.ordre.map((id) => ({ id, ...etat.joueurs[id] })),
       tour: etat.tour, essai: etat.essai, tourCourant,
       dernierResultat: etat.dernierResultat, gagnant: etat.gagnant, annulee: etat.annulee,
