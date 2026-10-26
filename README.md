@@ -43,6 +43,11 @@ les éliminés restent en spectateurs · personne ne rejoint une partie lancée 
 
 ---
 
+> **Production actuelle** : Render (Francfort) + Neon, déployés automatiquement par la pipeline CI/CD
+> (tests → version → déploiement → vérification → retour arrière automatique).
+> Tout est expliqué dans **[docs/CICD.md](docs/CICD.md)**. Les sections 2 et 3 ci-dessous décrivent les
+> hébergements possibles.
+
 ## 1. Lancer en local
 
 Prérequis : **Node.js 20 ou plus** ([nodejs.org](https://nodejs.org)) et une base PostgreSQL.
@@ -134,7 +139,9 @@ l'auteur), 🔇 pour rendre son auteur muet (admins ; 0 minute = lever la sancti
 
 ```bash
 npm test                                   # tests unitaires des mini-jeux (sans base)
+npm run test:integration                   # API, droits et chat (serveur lancé + base)
 npm run test:charge                        # 100 joueurs simulés sur les 16 mini-jeux (serveur lancé + base)
+npm run test:nettoyer                      # supprime les comptes Bot et leurs parties de test
 node tests/charge.js --joueurs 100 --jeu des --url https://ton-site.vercel.app
 ```
 

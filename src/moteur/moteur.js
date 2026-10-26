@@ -543,6 +543,25 @@ class Moteur {
     this.emettre(`salle:${etat.code}`, 'salle:etat', await this.vueClient(etat));
   }
 
+  /**
+   * Activité en cours (pour la pipeline : ne pas redéployer pendant une partie).
+   *  - partiesEnCours : parties lancées et pas encore terminées ;
+   *  - sallesAttente  : salles d'attente avec au moins un inscrit, créées il y a moins d'une heure
+   *                     (une salle oubliée depuis longtemps ne bloque pas les déploiements).
+   */
+  async activite() {
+    const codes = await stockage.smembers('salles:actives');
+    let partiesEnCours = 0;
+    let sallesAttente = 0;
+    for (const code of codes) {
+      const e = await this.lire(code);
+      if (!e) continue;
+      if (e.phase === 'tour' || e.phase === 'resultats') partiesEnCours++;
+      else if (e.phase === 'attente' && e.ordre.length > 0 && Date.now() - e.creeLe < 3600 * 1000) sallesAttente++;
+    }
+    return { partiesEnCours, sallesAttente };
+  }
+
   /** Résumé des salles actives pour la page d'accueil. */
   async listerSalles() {
     const codes = await stockage.smembers('salles:actives');

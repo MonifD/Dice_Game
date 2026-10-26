@@ -13,7 +13,10 @@
     "vercel-build": "prisma generate && prisma migrate deploy",
     "test": "node --test tests/*.test.js",
     "test:charge": "node tests/charge.js --joueurs 100 --tous",
-    "superadmin": "node prisma/superadmin.js"
+    "superadmin": "node prisma/superadmin.js",
+    "test:nettoyer": "node tests/nettoyer-bots.js",
+    "test:integration": "node tests/integration/api.js && node tests/integration/chat.js",
+    "ci:version": "node scripts/ci/version.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "6.19.3",

@@ -1,0 +1,24 @@
+# =====================================================================
+#  1. PUSH SUR UNE BRANCHE (cicd, feat/…, fix/…) -> tests rapides (~3 min)
+#     main et production ont leurs propres pipelines.
+# =====================================================================
+name: Tests de branche
+
+on:
+  push:
+    branches-ignore: [main, production]
+
+permissions:
+  contents: read
+
+# un nouveau push annule les tests en cours du push précédent sur la même branche
+concurrency:
+  group: tests-branche-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+    with:
+      complet: false

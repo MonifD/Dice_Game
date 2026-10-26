@@ -1,0 +1,68 @@
+# =====================================================================
+#  5. SAUVEGARDE DE LA BASE (Neon) — chaque nuit + avant chaque livraison
+#     Fichier CHIFFRÉ (AES-256) conservé 30 jours dans les artefacts GitHub.
+#     Le dépôt est public : la sauvegarde n'est jamais stockée en clair.
+#
+#  À configurer une fois (Settings -> Secrets and variables -> Actions -> New repository secret) :
+#     NEON_DIRECT_URL           adresse Neon SANS -pooler
+#     SAUVEGARDE_MOT_DE_PASSE   mot de passe de chiffrement (garde-le précieusement !)
+#  Sans ces secrets, la sauvegarde est simplement ignorée (la livraison continue).
+#  Restauration : voir docs/CICD.md.
+# =====================================================================
+name: Sauvegarde de la base
+
+on:
+  schedule:
+    - cron: "17 2 * * *"   # chaque nuit vers 3 h - 4 h (heure de Paris)
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  sauvegarde:
+    name: Sauvegarde chiffrée
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      URL_BASE: ${{ secrets.NEON_DIRECT_URL }}
+      MDP: ${{ secrets.SAUVEGARDE_MOT_DE_PASSE }}
+    steps:
+      - name: Sauvegarde non configurée
+        if: env.URL_BASE == ''
+        run: echo "::notice title=Sauvegarde ignorée::ajoute les secrets NEON_DIRECT_URL et SAUVEGARDE_MOT_DE_PASSE pour l'activer (docs/CICD.md)."
+
+      - name: Mot de passe de chiffrement obligatoire
+        if: env.URL_BASE != '' && env.MDP == ''
+        run: |
+          echo "::error::NEON_DIRECT_URL est défini mais pas SAUVEGARDE_MOT_DE_PASSE : refus de stocker une sauvegarde non chiffrée (dépôt public)."
+          exit 1
+
+      - name: Exporter la base (pg_dump 16)
+        if: env.URL_BASE != ''
+        run: |
+          docker run --rm -e URL_BASE postgres:16 \
+            sh -c 'pg_dump "$URL_BASE" --format=custom --no-owner --no-privileges' > base.dump
+          taille=$(stat -c %s base.dump)
+          [ "$taille" -gt 1000 ] || { echo "::error::sauvegarde vide ($taille octets)"; exit 1; }
+          echo "📦 Sauvegarde : $taille octets"
+
+      - name: Chiffrer
+        if: env.URL_BASE != ''
+        id: chiffre
+        run: |
+          nom="sauvegarde-$(date -u +%Y%m%d-%H%M)"
+          printf '%s' "$MDP" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 -o "$nom.dump.gpg" base.dump
+          rm -f base.dump
+          echo "nom=$nom" >> "$GITHUB_OUTPUT"
+
+      - name: Conserver 30 jours
+        if: env.URL_BASE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.chiffre.outputs.nom }}
+          path: ${{ steps.chiffre.outputs.nom }}.dump.gpg
+          retention-days: 30
+          if-no-files-found: error

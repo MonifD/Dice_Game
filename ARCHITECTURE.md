@@ -23,6 +23,9 @@
 
 ```
 last_war/
+├── .github/
+│   ├── workflows/             CI/CD : tests, PR (fusion auto), livraison, retour de version, sauvegardes
+│   └── pull_request_template.md
 ├── api/server.js              entrée Vercel (exporte le serveur HTTP)
 ├── prisma/
 │   ├── schema.prisma          tables
@@ -53,7 +56,10 @@ last_war/
 │   └── minijeux/
 │       ├── index.js           registre (charge automatiquement chaque dossier)
 │       └── <id>/serveur.js + client.js   un dossier par mini-jeu
-└── tests/  minijeux.test.js (unitaires) · charge.js + strategies.js (100 joueurs simulés)
+├── scripts/ci/                version.js (calcul de version) · attendre-calme.js · verifier-prod.js
+├── docs/CICD.md               mode d'emploi de la pipeline
+└── tests/  minijeux.test.js (unitaires) · integration/ (API, droits, chat)
+            charge.js + strategies.js (100 joueurs simulés) · nettoyer-bots.js
 ```
 
 ## Tables (Prisma)
@@ -138,6 +144,13 @@ Phases d'une salle : `attente → tour → resultats → tour → … → termin
 les échéances toutes les secondes, donc si l'instance qui gérait un tour disparaît, une autre prend le relais.
 Les messages passent par l'adaptateur Redis de Socket.IO. Un joueur qui se reconnecte (autre instance,
 réseau coupé, fin de durée max d'une fonction Vercel) renvoie `salle:observer` et retrouve son état exact.
+
+## Versions et déploiement
+
+Versions `vX.Y.Z` = tags Git créés par la pipeline (`.github/workflows/livraison.yml`) à partir des titres de PR
+(Conventional Commits). Render suit la branche `production`, que seule la pipeline met à jour après les tests ;
+revenir à une version = repointer `production` sur un ancien tag. `GET /api/sante` renvoie la version en ligne
+et le nombre de parties en cours (la pipeline ne déploie pas pendant une partie). Détails : `docs/CICD.md`.
 
 ## Ajouter un mini-jeu
 

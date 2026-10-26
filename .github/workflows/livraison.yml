@@ -1,0 +1,157 @@
+# =====================================================================
+#  3. LIVRAISON (main)
+#     tests complets rejoués sur le code fusionné
+#     -> calcul de la version (tags vX.Y.Z)
+#     -> sauvegarde de la base (si configurée)
+#     -> attente : aucune partie en cours sur le site
+#     -> commit de release + tag -> branche « production » (Render la redéploie)
+#     -> vérification du site -> publication de la version sur GitHub
+#     -> en cas d'échec : retour automatique à la version précédente
+#
+#  Déclenchée par : une fusion manuelle sur main (push), la fusion automatique
+#  d'une PR (workflow_dispatch), ou à la main depuis l'onglet Actions.
+# =====================================================================
+name: Livraison
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # tags, branche production, releases
+
+# une seule livraison à la fois, jamais annulée en cours de route
+concurrency:
+  group: livraison
+  cancel-in-progress: false
+
+env:
+  PROD_URL: ${{ vars.PROD_URL || 'https://last-war-arene.onrender.com' }}
+
+jobs:
+  # -------------------------------------------------------------------
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+    with:
+      complet: true
+      ref: ${{ github.sha }}
+
+  # -------------------------------------------------------------------
+  version:
+    name: Version
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      precedente: ${{ steps.v.outputs.precedente }}
+      livrer: ${{ steps.v.outputs.livrer }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Calculer la prochaine version
+        id: v
+        run: |
+          node scripts/ci/version.js --ref HEAD
+          { echo "### Version"; echo; cat notes-version.md; } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------
+  sauvegarde:
+    name: Sauvegarde de la base
+    needs: version
+    if: needs.version.outputs.livrer == 'true'
+    uses: ./.github/workflows/sauvegarde-base.yml
+    secrets: inherit
+
+  # -------------------------------------------------------------------
+  deployer:
+    name: Déploiement
+    needs: [version, sauvegarde]
+    if: needs.version.outputs.livrer == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL || 'https://last-war-arene.onrender.com' }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Attendre qu'aucune partie ne soit en cours
+        id: calme
+        run: node scripts/ci/attendre-calme.js "$PROD_URL" --minutes 30
+
+      - name: Créer la version (commit de release + tag)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node scripts/ci/version.js --ref HEAD > /dev/null   # régénère notes-version.md
+          printf '{ "version": "%s", "commit": "%s", "date": "%s" }\n' \
+            "$VERSION" "${GITHUB_SHA::7}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > version.json
+          git add -f version.json
+          git commit -q -m "release: $VERSION"
+          git tag -a "$VERSION" -m "Version $VERSION"
+          git push origin "refs/tags/$VERSION"
+          echo "🏷 Tag $VERSION créé" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mettre en production
+        id: production
+        run: |
+          git push --force origin "HEAD:refs/heads/production"
+          echo "pousse=true" >> "$GITHUB_OUTPUT"
+          echo "🚀 Branche production -> $VERSION (Render redéploie)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Vérifier la production
+        run: node scripts/ci/verifier-prod.js "$PROD_URL" "$VERSION" --minutes 20
+
+      - name: Publier la version sur GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" --title "$VERSION" --notes-file notes-version.md --verify-tag --latest
+          echo "✅ **$VERSION en production** : $PROD_URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: ↩️ Retour automatique à la version précédente
+        if: failure() && steps.production.outputs.pousse == 'true'
+        env:
+          PRECEDENTE: ${{ steps.calme.outputs.version_actuelle }}
+        run: |
+          # la version ratée est retirée : son numéro sera réutilisé par la prochaine tentative
+          git push --delete origin "refs/tags/$VERSION" || true
+          if [ -z "$PRECEDENTE" ]; then
+            echo "::error::$VERSION a échoué et aucune version précédente n'est connue : retour impossible."
+            echo "❌ $VERSION a échoué, aucune version précédente pour revenir en arrière." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          git push --force origin "refs/tags/$PRECEDENTE^{commit}:refs/heads/production"
+          node scripts/ci/verifier-prod.js "$PROD_URL" "$PRECEDENTE" --minutes 20
+          echo "::error::$VERSION a échoué en production : retour automatique à $PRECEDENTE effectué."
+          echo "↩️ **$VERSION a échoué** : la production est revenue à **$PRECEDENTE**." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+  # -------------------------------------------------------------------
+  rien-a-livrer:
+    name: Rien à livrer
+    needs: version
+    if: needs.version.outputs.livrer != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Résumé
+        env:
+          PRECEDENTE: ${{ needs.version.outputs.precedente }}
+        run: |
+          echo "📦 Seulement docs/ci/test/chore depuis $PRECEDENTE : pas de nouvelle version ni de déploiement." >> "$GITHUB_STEP_SUMMARY"
