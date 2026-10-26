@@ -1,11 +1,11 @@
 # Déploiement sur Render : Dashboard > New + > Blueprint > choisis ce dépôt GitHub.
-# Un serveur Node classique toujours allumé, à Francfort (proche de la France) : idéal pour les WebSockets.
+# Un serveur Node classique, à Francfort (proche de la France) : idéal pour les WebSockets.
 services:
   - type: web
     name: last-war-arene
     runtime: node
     region: frankfurt
-    plan: starter            # 7 $/mois, toujours allumé (le plan gratuit s'endort après 15 min)
+    plan: free               # gratuit : s'endort après 15 min sans visite (réveil ~1 min). « starter » (7 $/mois) = toujours allumé
     buildCommand: npm ci && npx prisma migrate deploy && node prisma/seed.js
     startCommand: npm start
     healthCheckPath: /api/sante
