@@ -1,21 +1,23 @@
-# Déploiement sur Render (alternative à Vercel) : New + > Blueprint > ce dépôt.
-# Un serveur Node classique, toujours allumé : idéal pour les WebSockets.
+# Déploiement sur Render : Dashboard > New + > Blueprint > choisis ce dépôt GitHub.
+# Un serveur Node classique toujours allumé, à Francfort (proche de la France) : idéal pour les WebSockets.
 services:
   - type: web
     name: last-war-arene
     runtime: node
-    plan: starter            # le plan gratuit s'endort après 15 min d'inactivité
-    buildCommand: npm ci && npx prisma migrate deploy
+    region: frankfurt
+    plan: starter            # 7 $/mois, toujours allumé (le plan gratuit s'endort après 15 min)
+    buildCommand: npm ci && npx prisma migrate deploy && node prisma/seed.js
     startCommand: npm start
     healthCheckPath: /api/sante
+    autoDeploy: true         # chaque push sur GitHub redéploie (évite de pousser pendant une partie !)
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL     # Neon : URL « pooled » (avec -pooler)
         sync: false
-      - key: DIRECT_URL
-        sync: false
-      - key: REDIS_URL       # facultatif avec une seule instance
+      - key: DIRECT_URL       # Neon : URL directe (sans -pooler)
         sync: false
       - key: JWT_SECRET
         generateValue: true
