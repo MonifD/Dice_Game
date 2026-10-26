@@ -114,7 +114,13 @@ test('tous les mini-jeux : un tour complet avec 20 joueurs donne des survivants 
     if (m.actionRequise !== false) {
       for (const id of enJeu) {
         const ecouleMs = m.id === 'course-clics' ? 3500 : m.id === 'feu-rouge' ? (etat.feux.find((f) => f.couleur === 'vert')?.dansMs ?? 0) + 10 : 1000;
-        const r = await m.action({ etat, joueurId: id, donnees: (donnees[m.id] || (() => ({})))(d.public), precedent: undefined, ecouleMs, params, rng, tour: 1 });
+        let r;
+        try {
+          r = await m.action({ etat, joueurId: id, donnees: (donnees[m.id] || (() => ({})))(d.public), precedent: undefined, ecouleMs, params, rng, tour: 1 });
+        } catch (e) {
+          throw new Error(`${m.id} : action refusée (« ${e.message} »). Si c'est un nouveau mini-jeu, ajoute ce qu'un joueur envoie `
+            + `dans « donnees » en haut de ce test (tests/minijeux.test.js), ex. '${m.id}': () => ({ choix: 'A' }),`);
+        }
         actions[id] = r.enregistrer;
       }
     }
@@ -124,4 +130,17 @@ test('tous les mini-jeux : un tour complet avec 20 joueurs donne des survivants 
     assert.ok(res.survivants.length <= enJeu.length, m.id);
     JSON.stringify(res.details); // les détails doivent être sérialisables
   }
+});
+
+test('chaque mini-jeu a une stratégie de bot pour le test de charge', () => {
+  const strategies = require('./strategies');
+  const manquants = [...registre.registre.keys()].filter((id) => !strategies[id]);
+  assert.deepStrictEqual(manquants, [], `stratégie de bot manquante pour : ${manquants.join(', ')} -> ajoute-la dans tests/strategies.js`);
+});
+
+test('chaque mini-jeu a un affichage client.js', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const manquants = [...registre.registre.values()].filter((m) => !fs.existsSync(path.join(m.dossier, 'client.js'))).map((m) => m.id);
+  assert.deepStrictEqual(manquants, [], `client.js manquant pour : ${manquants.join(', ')}`);
 });

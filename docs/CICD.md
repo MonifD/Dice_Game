@@ -118,6 +118,46 @@ docker run --rm -i -e URL="adresse-neon-SANS-pooler" postgres:16 \
 Neon permet aussi de restaurer la base à un instant précis (Console Neon → Branches → Restore),
 sur une période courte avec l'offre gratuite.
 
+## Ajouter un mini-jeu : les tests
+
+**Automatique** (rien à faire) dès que le dossier `src/minijeux/<id>/` existe :
+- vérification de la syntaxe et de l'interface du module (`id`, `nom`, `initialiser`, `debutTour`, `action`, `resoudreTour`) ;
+- présence du fichier `client.js` ;
+- un tour complet simulé avec 20 joueurs (les survivants doivent être des joueurs de la partie) ;
+- sur la PR : une **partie complète jouée par 30 bots** sur un vrai serveur, enregistrée en base.
+
+**À ajouter par toi : 2 lignes** (la pipeline échoue avec un message clair si tu les oublies) :
+
+1. `tests/minijeux.test.js`, objet `donnees` (vers la ligne 90) : ce qu'un joueur envoie pour jouer.
+   ```js
+   'pair-impair': () => ({ choix: rng.choisir(['pair', 'impair']) }),
+   ```
+   (Un jeu sans action — comme la roue — ou qui n'attend rien — comme le dé — n'en a pas besoin.)
+2. `tests/strategies.js` : comment un bot joue une partie.
+   ```js
+   'pair-impair': { async jouer({ envoyer }) { await delai(); await envoyer({ choix: choisir(['pair', 'impair']) }); } },
+   ```
+   Pour un jeu à événements (feu vert, flashs…), inspire-toi de `reflexe` ou `memoire` dans le même fichier.
+
+**Recommandé : des tests de règles** dans `tests/minijeux.test.js`, sur le modèle des tests « dé » ou « minorité » :
+on appelle `resoudreTour` avec des actions choisies et on vérifie qui survit.
+```js
+test('pair ou impair : seuls ceux qui ont deviné survivent', async () => {
+  const m = registre.obtenir('pair-impair');
+  const faux = { entier: () => 42 };                     // tirage forcé : 42 = pair
+  const r = await m.resoudreTour({ etat: {}, actions: { a: { choix: 'pair' }, b: { choix: 'impair' } }, rng: faux });
+  assert.deepStrictEqual(r.survivants, ['a']);
+});
+```
+
+Vérifier en local avant de pousser :
+```bash
+npm test                                             # unitaires (sans base) : quelques secondes
+npm start                                            # dans un autre terminal (Docker lancé)
+node tests/charge.js --joueurs 20 --jeu pair-impair  # une vraie partie jouée par 20 bots
+```
+Puis PR intitulée `feat: mini-jeu Pair ou impair` -> nouvelle version mineure.
+
 ---
 
 ## Mise en place (une seule fois)

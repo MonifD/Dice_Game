@@ -124,7 +124,15 @@ jobs:
           echo "✅ PR #$NUMERO fusionnée dans main" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Déclencher la livraison
-        # une fusion faite par la pipeline ne déclenche pas « push » : on lance la livraison explicitement
+        # une fusion faite par la pipeline ne déclenche pas « push » : on lance la livraison explicitement.
+        # Plusieurs essais : juste après une fusion, GitHub peut mettre quelques secondes à voir le workflow.
         run: |
-          gh workflow run livraison.yml --ref main
-          echo "🚚 Livraison lancée : voir l'onglet Actions → « Livraison »" >> "$GITHUB_STEP_SUMMARY"
+          for essai in 1 2 3 4 5 6; do
+            if gh workflow run livraison.yml --ref main; then
+              echo "🚚 Livraison lancée : voir l'onglet Actions → « Livraison »" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Essai $essai échoué, nouvel essai dans 15 s…"; sleep 15
+          done
+          echo "::error::Impossible de lancer la livraison automatiquement. Lance-la à la main : Actions → Livraison → Run workflow (branche main)."
+          exit 1

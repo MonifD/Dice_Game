@@ -63,7 +63,7 @@ const emettre = (s, ev, d) => new Promise((resolve) => {
 
 async function unePartie(miniJeu, { bots, org }) {
   const strat = strategies[miniJeu];
-  if (!strat) throw new Error(`Pas de stratégie de bot pour ${miniJeu}`);
+  if (!strat) throw new Error(`Pas de stratégie de bot pour « ${miniJeu} » : ajoute-la dans tests/strategies.js (voir docs/CICD.md, « Ajouter un mini-jeu »)`);
   const params = { dureeTour: 6, pauseResultats: 2, ...(strat.params || {}), ...(args.params ? JSON.parse(args.params) : {}) };
 
   const rep = await fetch(`${URL}/api/salles`, {
@@ -137,7 +137,8 @@ async function unePartie(miniJeu, { bots, org }) {
 
 (async () => {
   const comptes = await preparerComptes();
-  const jeux = args.tous ? Object.keys(strategies) : [args.jeu || 'des'];
+  // --tous : TOUS les mini-jeux du registre (un jeu sans stratégie de bot fait échouer le test)
+  const jeux = args.tous ? require('../src/minijeux').catalogue().map((m) => m.id) : [args.jeu || 'des'];
   const bilan = [];
   for (const j of jeux) {
     console.log(`\n=== ${j} — ${N} joueurs${URLS.length > 1 ? ` sur ${URLS.length} instances` : ''} ===`);
