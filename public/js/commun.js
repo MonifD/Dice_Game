@@ -65,19 +65,40 @@
       ['historique', '/historique', 'Historique'],
       ...(LW.peutOrganiser(j) ? [['admin', '/admin', LW.estAdmin(j) ? 'Administration' : 'Organiser']] : []),
     ];
+    const badges = `<span class="badge or">${LW.echapper(j.rang)}</span>
+          ${LW.libelleRole(j) ? `<span class="badge bleu">${LW.libelleRole(j)}</span>` : ''}`;
     const barre = LW.h(`
       <header class="barre">
         <a class="logo" href="/accueil"><span class="ecusson">⚔</span><span>Last War <span class="muet petit">Arène</span></span></a>
         <nav class="nav">${liens.map(([id, href, txt]) => `<a href="${href}" class="${id === pageActive ? 'actif' : ''}">${txt}</a>`).join('')}</nav>
         <div class="profil">
-          <span class="badge or">${LW.echapper(j.rang)}</span>
-          ${LW.libelleRole(j) ? `<span class="badge bleu">${LW.libelleRole(j)}</span>` : ''}
+          ${badges}
           <span class="pseudo">${LW.echapper(j.pseudo)}</span>
           <button class="btn lien petit" id="btn-deconnexion" title="Déconnexion">⏻</button>
+        </div>
+        <button class="burger" id="btn-burger" aria-label="Menu" aria-expanded="false" aria-controls="menu-mobile"><span></span><span></span><span></span></button>
+        <div class="menu-mobile" id="menu-mobile" hidden>
+          <div class="menu-profil"><span class="pseudo">${LW.echapper(j.pseudo)}</span><span class="ligne" style="gap:6px">${badges}</span></div>
+          <nav>${liens.map(([id, href, txt]) => `<a href="${href}" class="${id === pageActive ? 'actif' : ''}">${txt}</a>`).join('')}</nav>
+          <button class="btn danger" id="btn-deconnexion-mobile">⏻ Se déconnecter</button>
         </div>
       </header>`);
     document.body.prepend(barre);
     LW.$('#btn-deconnexion').onclick = LW.deconnexion;
+    LW.$('#btn-deconnexion-mobile').onclick = LW.deconnexion;
+
+    // menu burger (téléphone)
+    const burger = LW.$('#btn-burger');
+    const menu = LW.$('#menu-mobile');
+    const ouvrirMenu = (ouvert) => {
+      menu.hidden = !ouvert;
+      burger.setAttribute('aria-expanded', String(ouvert));
+      burger.classList.toggle('ouvert', ouvert);
+    };
+    burger.onclick = (e) => { e.stopPropagation(); ouvrirMenu(menu.hidden); };
+    document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) ouvrirMenu(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ouvrirMenu(false); });
+    window.addEventListener('resize', () => { if (window.innerWidth > 720) ouvrirMenu(false); });
     LW.piedDePage();
   };
 
