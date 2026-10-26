@@ -23,7 +23,8 @@ module.exports = {
 
   async resoudreTour({ etat, enJeu, params, rng }) {
     const n = enJeu.length;
-    const nbElimines = Math.min(n - 1, Math.max(1, Math.round((n * params.pourcentElimines) / 100)));
+    // finale toujours en duel : à 3 joueurs ou plus, au moins 2 restent
+    const nbElimines = Math.min(n > 2 ? n - 2 : n - 1, Math.max(1, Math.round((n * params.pourcentElimines) / 100)));
     const elimines = rng.echantillon(enJeu, nbElimines);
     return { etat, survivants: enJeu.filter((id) => !elimines.includes(id)), details: { type: 'roue', elimines } };
   },

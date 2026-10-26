@@ -38,9 +38,15 @@ module.exports = {
   async resoudreTour({ etat, actions, params }) {
     const lignes = Object.entries(actions).map(([joueurId, a]) => ({ joueurId, mise: a.mise }));
     let survivants;
+    let message = null;
     if (params.elimination === 'min') {
       const min = Math.min(...lignes.map((l) => l.mise));
       survivants = lignes.filter((l) => l.mise > min).map((l) => l.joueurId);
+      // finale toujours en duel : à 3 joueurs ou plus, une égalité en bas n'élimine pas tout le monde sauf un
+      if (lignes.length > 2 && survivants.length === 1) {
+        survivants = lignes.map((l) => l.joueurId);
+        message = 'Plusieurs joueurs à égalité sur la plus petite mise : personne n\'est éliminé ce tour-ci.';
+      }
     } else {
       survivants = garderMeilleurs(lignes.map((l) => ({ id: l.joueurId, score: l.mise })), Number(params.elimination));
     }
@@ -48,7 +54,7 @@ module.exports = {
     for (const l of lignes) points[l.joueurId] -= l.mise;
     for (const id of Object.keys(points)) if (!survivants.includes(id)) delete points[id];
     return {
-      etat: { ...etat, points }, survivants,
+      etat: { ...etat, points }, survivants, message,
       details: { type: 'encheres', lignes: lignes.sort((a, b) => b.mise - a.mise) },
     };
   },
