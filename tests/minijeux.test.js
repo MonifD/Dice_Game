@@ -26,6 +26,16 @@ test('garderMeilleurs : finale toujours en duel (jamais de 3+ joueurs à un seul
   assert.strictEqual(garderMeilleurs(j(9, 5), 90).length, 1); // à 2, la finale désigne le gagnant
 });
 
+test('chaque mini-jeu a des règles lisibles pour la salle d\'attente', () => {
+  for (const m of registre.catalogue()) {
+    const mod = registre.obtenir(m.id);
+    assert.strictEqual(typeof mod.regles, 'function', `${m.id} : il manque regles(params)`);
+    const regles = mod.regles(validerParametres(mod, {}));
+    assert.ok(Array.isArray(regles) && regles.length >= 2, `${m.id} : au moins 2 règles`);
+    for (const r of regles) assert.ok(typeof r === 'string' && r.length > 10 && !/undefined|NaN|\$\{/.test(r), `${m.id} : règle invalide « ${r} »`);
+  }
+});
+
 test('rng : bornes respectées', () => {
   for (let i = 0; i < 2000; i++) { const n = rng.entier(1, 6); assert.ok(n >= 1 && n <= 6); }
   assert.strictEqual(new Set(rng.melanger([1, 2, 3, 4])).size, 4);

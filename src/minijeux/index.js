@@ -10,6 +10,7 @@
  * INTERFACE d'un module serveur.js
  * ---------------------------------
  *  id, nom, description, icone        textes affichés
+ *  regles(params) -> [phrases]         règles affichées en salle d'attente (avec les réglages de la partie)
  *  parametres: [{ cle, libelle, type: 'nombre'|'choix'|'booleen'|'texte', min, max, defaut, options }]
  *  dureeTourDefaut  (s)               durée par défaut d'un tour (paramètre commun « dureeTour »)
  *  actionRequise    (défaut true)     false = tour automatique (ex. roue) : personne n'est éliminé pour absence

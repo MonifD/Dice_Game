@@ -55,7 +55,7 @@ last_war/
 │   │   └── outils.js          rng sécurisé, ErreurJeu, garderMeilleurs()
 │   └── minijeux/
 │       ├── index.js           registre (charge automatiquement chaque dossier)
-│       └── <id>/serveur.js + client.js   un dossier par mini-jeu
+│       └── <id>/serveur.js + client.js   un dossier par mini-jeu (serveur.js contient aussi regles(params), affichées en salle d'attente)
 ├── scripts/ci/                version.js (calcul de version) · attendre-calme.js · verifier-prod.js
 ├── docs/CICD.md               mode d'emploi de la pipeline
 └── tests/  minijeux.test.js (unitaires) · integration/ (API, droits, chat)

@@ -13,6 +13,13 @@ module.exports = {
   nom: 'Quiz',
   icone: '❓',
   description: 'Une question par tour. Mauvaise réponse ou pas de réponse = éliminé. Questions gérées dans l\'administration.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Une question par tour${p.categorie && p.categorie !== 'toutes' ? ` (${p.categorie})` : ''}, avec plusieurs réponses possibles.`,
+    'Choisis la bonne réponse avant la fin du chrono.',
+    'Mauvaise réponse = éliminé. Si tout le monde se trompe, une nouvelle question est posée.',
+    'Plus de questions et encore plusieurs joueurs : place à la mort subite.',
+  ],
   dureeTourDefaut: 20,
   parametres: [
     {

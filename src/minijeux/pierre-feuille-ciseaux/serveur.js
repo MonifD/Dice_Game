@@ -13,6 +13,12 @@ module.exports = {
   nom: 'Pierre-feuille-ciseaux',
   icone: '✊',
   description: 'Affronte le serveur ! Ceux qui perdent sont éliminés, les égalités rejouent au tour suivant.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Tu affrontes le serveur : choisis Pierre, Feuille ou Ciseaux. ${p.mode === 'commun' ? 'Le serveur joue le même coup contre tout le monde, révélé à la fin du tour.' : 'Le serveur joue un coup au hasard contre chaque joueur.'}`,
+    'Pierre bat Ciseaux, Ciseaux bat Feuille, Feuille bat Pierre.',
+    'Perdu = éliminé. Gagné ou égalité = tu passes au tour suivant.',
+  ],
   dureeTourDefaut: 15,
   parametres: [
     {

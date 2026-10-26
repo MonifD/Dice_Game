@@ -325,3 +325,10 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .rappel-absent { text-align: center; font-size: .88rem; color: var(--texte-2); margin: 6px 0 0; }
 .rappel-absent.urgent { color: #ff8a8a; font-weight: 700; animation: clignote 1s infinite; }
 @keyframes clignote { 50% { opacity: .45; } }
+
+/* règles du jeu en salle d'attente */
+.regles { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--panneau-2); border: 1px solid var(--bord); text-align: left; }
+.regles summary { cursor: pointer; font-weight: 700; font-size: 1.02rem; list-style-position: inside; }
+.regles ol { margin: 10px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.regles ol li { line-height: 1.45; }
+.regles-communes { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--bord); display: flex; flex-direction: column; gap: 4px; font-size: .88rem; color: var(--texte-2); }

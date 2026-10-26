@@ -633,7 +633,10 @@ class Moteur {
     }
     return {
       code: etat.code, phase: etat.phase,
-      miniJeu: { id: base.id, nom: base.nom, icone: base.icone || '🎮', description: base.description },
+      miniJeu: {
+        id: base.id, nom: base.nom, icone: base.icone || '🎮', description: base.description,
+        actionRequise: base.actionRequise !== false, regles: etat.phase === 'attente' ? this.regles(base, etat.params) : undefined,
+      },
       jeuActif: { id: mod.id, nom: mod.nom, actionRequise: mod.actionRequise !== false },
       departage: etat.departage, params: etat.params, organisateur: etat.organisateur, objet: etat.objet || null, dateObjet: etat.dateObjet || null,
       reglagesOrga: etat.reglagesOrga || null, prochainTour: this.prochainTour(etat),
@@ -644,6 +647,12 @@ class Moteur {
       vue: typeof mod.vuePublique === 'function' && etat.etatJeu ? mod.vuePublique({ etat: etat.etatJeu }) : null,
       echeance: etat.echeance, maintenant: Date.now(),
     };
+  }
+
+  /** Règles du mini-jeu avec les paramètres de la partie (salle d'attente). */
+  regles(mod, params) {
+    try { return typeof mod.regles === 'function' ? mod.regles(params).filter(Boolean).map(String) : [mod.description]; }
+    catch (e) { console.error('[moteur] règles', mod.id, e.message); return [mod.description]; }
   }
 
   async diffuserEtat(etat) {

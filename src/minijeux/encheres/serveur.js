@@ -12,6 +12,13 @@ module.exports = {
   nom: 'Enchères à l\'aveugle',
   icone: '💎',
   description: 'Tu as un budget de points. À chaque tour, mise en secret : la plus petite mise est éliminée. Les points misés sont perdus.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Tu commences avec ${p.points} points.`,
+    'À chaque tour, mise en secret une partie de tes points.',
+    `${p.elimination === 'min' ? 'La plus petite mise est éliminée' : `Les ${p.elimination} % plus petites mises sont éliminées`}.`,
+    'Les points misés sont perdus : gère ton budget pour tenir jusqu\'au bout !',
+  ],
   dureeTourDefaut: 25,
   parametres: [
     { cle: 'points', libelle: 'Points de départ', type: 'nombre', min: 10, max: 10000, defaut: 100 },

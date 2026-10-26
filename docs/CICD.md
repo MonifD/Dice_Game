@@ -123,6 +123,7 @@ sur une période courte avec l'offre gratuite.
 **Automatique** (rien à faire) dès que le dossier `src/minijeux/<id>/` existe :
 - vérification de la syntaxe et de l'interface du module (`id`, `nom`, `initialiser`, `debutTour`, `action`, `resoudreTour`) ;
 - présence du fichier `client.js` ;
+- présence des règles `regles(params)` dans `serveur.js` (au moins 2 phrases, affichées en salle d'attente) ;
 - un tour complet simulé avec 20 joueurs (les survivants doivent être des joueurs de la partie) ;
 - sur la PR : une **partie complète jouée par 30 bots** sur un vrai serveur, enregistrée en base.
 

@@ -8,6 +8,12 @@ module.exports = {
   nom: 'Roue de la fortune',
   icone: '🎡',
   description: 'Personne ne joue : la roue désigne au hasard les éliminés de chaque tour. Pur hasard !',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'Rien à faire : regarde la roue tourner !',
+    `À chaque tour, elle désigne au hasard ${p.pourcentElimines} % des joueurs, qui sont éliminés.`,
+    'Pur hasard, jusqu\'au dernier survivant.',
+  ],
   actionRequise: false,
   parametresCommunsMasques: ['dureeTour'],
   parametres: [

@@ -15,6 +15,13 @@ module.exports = {
   nom: 'Réflexe',
   icone: '⚡',
   description: 'Clique dès que l\'écran passe au VERT. Trop tôt = éliminé ; les plus lents sont éliminés aussi.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'L\'écran est rouge : attends sans cliquer.',
+    `Dès qu'il passe au VERT, clique le plus vite possible (tu as ${p.fenetre} s).`,
+    'Cliquer avant le vert = éliminé.',
+    `Parmi les autres, les ${p.pourcentElimines} % les plus lents sont éliminés. Le temps est mesuré par le serveur.`,
+  ],
   parametresCommunsMasques: ['dureeTour'],
   parametres: [
     { cle: 'pourcentElimines', libelle: '% des plus lents éliminés', type: 'nombre', min: 10, max: 90, defaut: 50 },

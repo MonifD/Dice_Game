@@ -28,6 +28,13 @@ module.exports = {
   nom: 'La carte la plus haute',
   icone: '🃏',
   description: 'Chaque joueur tire une carte au hasard. Toutes les cartes sont révélées à la fin du tour : les plus basses sont éliminées.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'Clique sur « Tirer une carte » : tu reçois une carte au hasard. Les autres ne la voient pas.',
+    'À la fin du tour, toutes les cartes sont révélées une à une.',
+    `Ordre : 2 < 3 < … < 10 < Valet < Dame < Roi < As${p.couleurs ? ' ; à valeur égale : ♣ < ♦ < ♥ < ♠' : ''}.`,
+    `Les ${p.pourcentElimines} % de cartes les plus basses sont éliminées. On recommence avec les autres jusqu\'au dernier.`,
+  ],
   dureeTourDefaut: 15,
   parametres: [
     { cle: 'pourcentElimines', libelle: '% de joueurs éliminés par tour', type: 'nombre', min: 10, max: 90, defaut: 50 },

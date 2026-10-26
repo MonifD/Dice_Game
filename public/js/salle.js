@@ -312,13 +312,16 @@
       ${inscrit ? '<div class="ligne"><button class="btn lien petit" id="btn-quitter">← Quitter la salle d\'attente</button></div>' : ''}
       <div class="pile" style="align-items:center;text-align:center;padding:10px 0">
         <div style="font-size:64px">${etat.miniJeu.icone}</div>
-        <p class="muet" style="max-width:520px">${echapper(etat.miniJeu.description)}</p>
+        <p class="muet" style="max-width:520px;margin-bottom:0">${echapper(etat.miniJeu.description)}</p>
         <div class="puces" style="justify-content:center">${params.filter(([, v]) => v !== '').map(([k, v]) => `<span class="badge">${echapper(libelleParam(k))} : <b>${echapper(String(v === true ? 'oui' : v === false ? 'non' : String(v).includes('\n') || String(v).length > 40 ? `${String(v).split('\n').filter((l) => l.trim()).length} tour(s) préparé(s)` : v))}</b></span>`).join('')}</div>
         <div class="grand-texte" style="font-size:3rem;margin-top:10px">${prets} / ${n}</div>
         <div class="muet" style="margin-top:-14px">joueur(s) prêt(s)</div>
         ${inscrit ? '' : '<button class="btn principal geant" id="btn-rejoindre">⚔ Rejoindre la partie</button>'}
       </div>
+      ${blocRegles()}
       <div class="puces" style="margin-top:18px">${etat.joueurs.map((x) => `<span class="puce ${x.id === String(moi.id) ? 'moi' : ''} ${x.pret ? 'pret' : 'pas-pret'}">${x.pret ? '✅' : '⏳'} ${echapper(x.pseudo)}</span>`).join('') || '<span class="muet">Personne pour l\'instant.</span>'}</div>`;
+    const regles = $('.regles', scene);
+    if (regles) { regles.open = reglesOuvertes; regles.ontoggle = () => { reglesOuvertes = regles.open; }; }
     $('#btn-rejoindre')?.addEventListener('click', async (e) => {
       e.target.disabled = true;
       const rep = await LW.emettre('salle:inscrire', { code });
@@ -328,6 +331,24 @@
       const rep = await LW.emettre('salle:quitter', { code });
       if (!rep.ok) toast(rep.erreur, 'erreur');
     });
+  }
+
+  let reglesOuvertes = true; // garde l'état replié / déplié quand la salle d'attente se redessine
+  /** Règles du jeu choisi + règles communes, pour ceux qui ne connaissent pas encore le jeu. */
+  function blocRegles() {
+    const m = etat.miniJeu;
+    const o = LW.objets[etat.objet];
+    const communes = [
+      m.actionRequise ? `⏱ Joue avant la fin du chrono (${etat.params.dureeTour} s par tour) : si tu ne joues pas, tu es éliminé.` : null,
+      '👀 Éliminé ? Tu restes en spectateur jusqu\'à la fin de la partie.',
+      `🏆 Le dernier survivant gagne${o ? ` et sera <b>${o.long}</b>${etat.dateObjet ? ` le <b>${LW.jour(etat.dateObjet)}</b>` : ''}` : ''}. La finale se joue toujours à 2 au minimum.`,
+      '⚡ Égalité impossible à départager ? Mort subite : chacun tire un nombre de 1 à 1000, le plus haut gagne.',
+    ].filter(Boolean);
+    return `<details class="regles" open>
+      <summary>📖 Règles du jeu : ${m.icone} ${echapper(m.nom)}</summary>
+      <ol>${(m.regles || [m.description]).map((r) => `<li>${echapper(r)}</li>`).join('')}</ol>
+      <div class="regles-communes">${communes.map((r) => `<div>${r}</div>`).join('')}</div>
+    </details>`;
   }
 
   const LIBELLES = { dureeTour: 'Temps par tour (s)' };

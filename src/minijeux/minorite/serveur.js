@@ -47,6 +47,13 @@ module.exports = {
   nom: 'La minorité gagne',
   icone: '⚖️',
   description: 'Choisis A ou B : seuls ceux qui ont choisi l\'option la moins populaire survivent. Idéal pour réduire vite un grand groupe.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: () => [
+    'Choisis entre deux options (A ou B). Les choix restent secrets jusqu\'à la fin du tour.',
+    'Seuls ceux qui ont choisi l\'option la MOINS choisie passent : il faut deviner ce que les autres ne vont pas choisir !',
+    'Égalité parfaite entre A et B : tout le monde passe. Tout le monde du même côté : le tour est rejoué.',
+    'À 2 joueurs, place à la mort subite.',
+  ],
   dureeTourDefaut: 15,
   parametres: [
     { cle: 'optionA', libelle: 'Texte de l\'option A', type: 'texte', defaut: 'A', max: MAX_TEXTE },
