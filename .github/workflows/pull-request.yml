@@ -61,10 +61,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # le script vient de la PR (il peut ne pas encore exister sur main),
+      # l'historique des versions est lu sur main (--ref = commit de base de la PR)
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.base.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
@@ -72,7 +73,8 @@ jobs:
         id: v
         env:
           TITRE: ${{ github.event.pull_request.title }}
-        run: node scripts/ci/version.js --titre "$TITRE"
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/version.js --ref "$BASE" --titre "$TITRE"
       - name: Commenter la PR
         env:
           GH_TOKEN: ${{ github.token }}
