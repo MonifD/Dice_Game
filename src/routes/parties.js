@@ -20,18 +20,45 @@ router.get('/salles', async (req, res, next) => {
 router.post('/salles', exigerOrganisateur, async (req, res, next) => {
   try {
     const etat = await moteur.creerSalle({
-      organisateurId: req.joueur.id, miniJeuId: req.body?.miniJeu, parametres: req.body?.parametres || {},
+      organisateurId: req.joueur.id, miniJeuId: req.body?.miniJeu, parametres: req.body?.parametres || {}, objet: req.body?.objet, dateObjet: req.body?.dateObjet,
     });
     res.status(201).json({ code: etat.code });
   } catch (e) { next(e); }
 });
 
-/** Historique : parties terminées (date, mini-jeu, gagnant), paginé. */
+const jour = (d) => (d ? d.toISOString().slice(0, 10) : null); // colonne DATE -> « AAAA-MM-JJ »
+
+/**
+ * Désignations en cours, pour chaque objet (Conducteur, VIP) : celle d'aujourd'hui,
+ * sinon la prochaine à venir, sinon la dernière passée.
+ */
+router.get('/designations', async (req, res, next) => {
+  try {
+    const auj = new Date(`${moteur.aujourdhui()}T00:00:00Z`);
+    const select = { dateObjet: true, miniJeu: true, gagnant: { select: { id: true, pseudo: true } } };
+    const base = { statut: 'TERMINEE', gagnantId: { not: null }, dateObjet: { not: null } };
+    const dernieres = await Promise.all(moteur.OBJETS.map(async (objet) => (
+      await prisma.partie.findFirst({ where: { ...base, objet, dateObjet: { gte: auj } }, orderBy: [{ dateObjet: 'asc' }, { dateFin: 'desc' }], select })
+      || prisma.partie.findFirst({ where: { ...base, objet }, orderBy: [{ dateObjet: 'desc' }, { dateFin: 'desc' }], select })
+    )));
+    res.json({
+      aujourdhui: moteur.aujourdhui(),
+      designations: Object.fromEntries(moteur.OBJETS.map((objet, i) => [objet, dernieres[i] ? {
+        gagnant: dernieres[i].gagnant, dateObjet: jour(dernieres[i].dateObjet),
+        miniJeu: registre.obtenir(dernieres[i].miniJeu)?.nom || dernieres[i].miniJeu,
+        icone: registre.obtenir(dernieres[i].miniJeu)?.icone || '🎮',
+      } : null])),
+    });
+  } catch (e) { next(e); }
+});
+
+/** Historique : parties terminées (date, objet, mini-jeu, gagnant), paginé, filtrable par objet. */
 router.get('/historique', async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
     const parPage = 25;
     const where = { statut: { in: ['TERMINEE', 'ANNULEE'] } };
+    if (moteur.OBJETS.includes(req.query.objet)) where.objet = req.query.objet;
     const [total, parties] = await Promise.all([
       prisma.partie.count({ where }),
       prisma.partie.findMany({
@@ -42,7 +69,7 @@ router.get('/historique', async (req, res, next) => {
     res.json({
       total, page, parPage,
       parties: parties.map((p) => ({
-        id: p.id, code: p.code, date: p.dateDebut || p.dateCreation, statut: p.statut,
+        id: p.id, code: p.code, date: p.dateDebut || p.dateCreation, statut: p.statut, objet: p.objet, dateObjet: jour(p.dateObjet),
         miniJeu: registre.obtenir(p.miniJeu)?.nom || p.miniJeu, icone: registre.obtenir(p.miniJeu)?.icone || '🎮',
         nbParticipants: p.nbParticipants, nbTours: p.nbTours, gagnant: p.gagnant, organisateur: p.organisateur.pseudo,
       })),
@@ -82,12 +109,12 @@ router.get('/moi/stats', async (req, res, next) => {
       prisma.participation.count({ where: { joueurId: req.joueur.id, partie: { statut: 'TERMINEE' } } }),
       prisma.partie.findMany({
         where: { gagnantId: req.joueur.id, statut: 'TERMINEE' }, orderBy: { dateFin: 'desc' }, take: 10,
-        select: { id: true, miniJeu: true, dateFin: true, nbParticipants: true },
+        select: { id: true, miniJeu: true, objet: true, dateObjet: true, dateFin: true, nbParticipants: true },
       }),
     ]);
     res.json({
       victoires, parties,
-      dernieresVictoires: dernieres.map((p) => ({ ...p, miniJeu: registre.obtenir(p.miniJeu)?.nom || p.miniJeu })),
+      dernieresVictoires: dernieres.map((p) => ({ ...p, dateObjet: jour(p.dateObjet), miniJeu: registre.obtenir(p.miniJeu)?.nom || p.miniJeu })),
     });
   } catch (e) { next(e); }
 });

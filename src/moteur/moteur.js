@@ -33,6 +33,22 @@ const MAX_REJEUX = 5; // au 5e rejeu consécutif d'un même tour, on passe en mo
 const TTL_ACTIONS_S = 6 * 3600;
 const TTL_SALLE_TERMINEE_S = 12 * 3600;
 const ALPHABET_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const OBJETS = ['CONDUCTEUR', 'VIP']; // objet de la partie : ce que le gagnant obtient
+
+/** Date du jour à Paris, au format AAAA-MM-JJ. */
+const aujourdhui = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+
+/** Vérifie la date d'application (« AAAA-MM-JJ », entre 7 jours avant et 1 an après aujourd'hui). */
+function validerDateObjet(d) {
+  const s = String(d || '');
+  const date = new Date(`${s}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== s) {
+    throw new ErreurJeu('Choisis la date à laquelle le gagnant sera Conducteur ou VIP.');
+  }
+  const ecartJours = (date - new Date(`${aujourdhui()}T00:00:00Z`)) / 86400000;
+  if (ecartJours < -7 || ecartJours > 366) throw new ErreurJeu('La date du Conducteur / VIP doit être proche d\'aujourd\'hui.');
+  return s;
+}
 
 const cleSalle = (code) => `salle:${code}`;
 const cleActions = (code, tour, essai) => `salle:${code}:a:${tour}:${essai}`;
@@ -117,19 +133,21 @@ class Moteur {
 
   // ------------------------------------------------------------------ salles
 
-  async creerSalle({ organisateurId, miniJeuId, parametres }) {
+  async creerSalle({ organisateurId, miniJeuId, parametres, objet, dateObjet }) {
     const org = await this.exigerOrganisateur(organisateurId);
     const mod = registre.obtenir(miniJeuId);
     if (!mod) throw new ErreurJeu('Mini-jeu inconnu.');
+    if (!OBJETS.includes(objet)) throw new ErreurJeu('Précise l\'objet de la partie : Conducteur ou VIP du train.');
+    dateObjet = validerDateObjet(dateObjet);
     const params = validerParametres(mod, parametres);
     const code = await this.genererCode();
 
     const partie = await prisma.partie.create({
-      data: { code, miniJeu: mod.id, parametres: params, organisateurId: org.id },
+      data: { code, miniJeu: mod.id, objet, dateObjet: new Date(`${dateObjet}T00:00:00Z`), parametres: params, organisateurId: org.id },
     });
 
     const etat = {
-      code, partieId: partie.id, miniJeu: mod.id, params,
+      code, partieId: partie.id, miniJeu: mod.id, objet, dateObjet, params,
       organisateur: { id: String(org.id), pseudo: org.pseudo },
       phase: 'attente', creeLe: Date.now(), debutLe: null, finLe: null,
       joueurs: {}, ordre: [],
@@ -562,7 +580,7 @@ class Moteur {
       code: etat.code, phase: etat.phase,
       miniJeu: { id: base.id, nom: base.nom, icone: base.icone || '🎮', description: base.description },
       jeuActif: { id: mod.id, nom: mod.nom, actionRequise: mod.actionRequise !== false },
-      departage: etat.departage, params: etat.params, organisateur: etat.organisateur,
+      departage: etat.departage, params: etat.params, organisateur: etat.organisateur, objet: etat.objet || null, dateObjet: etat.dateObjet || null,
       joueurs: etat.ordre.map((id) => ({ id, ...etat.joueurs[id] })),
       tour: etat.tour, essai: etat.essai, tourCourant,
       dernierResultat: etat.dernierResultat, gagnant: etat.gagnant, annulee: etat.annulee,
@@ -603,7 +621,7 @@ class Moteur {
       if (!e) continue;
       const m = registre.obtenir(e.miniJeu);
       salles.push({
-        code, phase: e.phase, miniJeu: { id: m.id, nom: m.nom, icone: m.icone || '🎮' },
+        code, phase: e.phase, miniJeu: { id: m.id, nom: m.nom, icone: m.icone || '🎮' }, objet: e.objet || null, dateObjet: e.dateObjet || null,
         organisateur: e.organisateur.pseudo, nbJoueurs: e.ordre.length,
         enJeu: this.idsEnJeu(e).length, tour: e.tour, creeLe: e.creeLe,
       });
@@ -614,3 +632,5 @@ class Moteur {
 
 module.exports = new Moteur();
 module.exports.Moteur = Moteur;
+module.exports.OBJETS = OBJETS;
+module.exports.aujourdhui = aujourdhui;

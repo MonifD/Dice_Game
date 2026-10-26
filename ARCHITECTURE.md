@@ -67,7 +67,7 @@ last_war/
 | Table | Champs principaux |
 |---|---|
 | `joueurs` | pseudo (unique), pseudoNormalise (unique, insensible à la casse), motDePasseHash (bcrypt), rang R1–R5 (R1 par défaut), rôle JOUEUR/ADMIN/SUPER_ADMIN, actif, dateInscription, derniereConnexion |
-| `parties` | code de salle, miniJeu, parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
+| `parties` | code de salle, miniJeu, **objet** (CONDUCTEUR / VIP du train) + **dateObjet** (jour où le gagnant l’exerce) — vides pour les anciennes parties, parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
 | `participations` | joueur, partie, tourAtteint, positionFinale (1 = gagnant, ex aequo partagés) |
 | `questions_quiz` | catégorie, question, choix[], bonneReponse, active |
 | `journaux` | date, auteur, action, détails (rangs, blocages, suppressions…) |

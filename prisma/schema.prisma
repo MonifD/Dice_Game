@@ -38,6 +38,12 @@ enum StatutPartie {
   ANNULEE
 }
 
+/// Ce que le gagnant de la partie obtient (raison d'être des jeux)
+enum ObjetPartie {
+  CONDUCTEUR // conducteur du train
+  VIP // VIP du train
+}
+
 /// Table « joueurs »
 model Joueur {
   id               Int             @id @default(autoincrement())
@@ -62,6 +68,8 @@ model Partie {
   id               Int             @id @default(autoincrement())
   code             String          @unique // identifiant court de la salle (ex. « K7Q2PX »)
   miniJeu          String // identifiant du module (ex. « des »)
+  objet            ObjetPartie? // Conducteur ou VIP du train (vide pour les parties d'avant)
+  dateObjet        DateTime?    @db.Date // jour où le gagnant sera Conducteur / VIP
   parametres       Json
   statut           StatutPartie    @default(ATTENTE)
   dateCreation     DateTime        @default(now())
@@ -78,6 +86,7 @@ model Partie {
   participations   Participation[]
 
   @@index([dateCreation])
+  @@index([objet, statut, dateObjet])
   @@map("parties")
 }
 

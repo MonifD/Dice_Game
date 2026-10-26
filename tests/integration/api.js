@@ -11,6 +11,7 @@
 require('dotenv').config({ quiet: true });
 const assert = require('assert');
 const prisma = require('../../src/db/prisma');
+const DEMAIN = new Date(Date.now() + 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 
 const i = process.argv.indexOf('--url');
 const URL = (i > 0 ? process.argv[i + 1] : `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
@@ -65,15 +66,25 @@ function verifier(nom, condition, detail = '') {
   r = await req('GET', '/api/minijeux', { jeton });
   verifier('catalogue des 16 mini-jeux', r.statut === 200 && r.json.minijeux.length >= 16, `${r.json.minijeux?.length}`);
 
-  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', parametres: {} } });
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'VIP', dateObjet: DEMAIN, parametres: {} } });
   verifier('un R1 ne peut pas créer de partie (403)', r.statut === 403, `statut ${r.statut}`);
   r = await req('GET', '/api/admin/joueurs', { jeton });
   verifier('un R1 n\'a pas accès à l\'administration (403)', r.statut === 403, `statut ${r.statut}`);
 
   await prisma.joueur.update({ where: { pseudo }, data: { rang: 'R4' } });
-  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', parametres: { nombreCible: 9 } } });
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'VIP', dateObjet: DEMAIN, parametres: { nombreCible: 9 } } });
   verifier('paramètre invalide refusé (400)', r.statut === 400, `statut ${r.statut}`);
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', parametres: { nombreCible: 3 } } });
+  verifier('objet de la partie obligatoire (400)', r.statut === 400, `statut ${r.statut}`);
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'PATRON', dateObjet: DEMAIN, parametres: { nombreCible: 3 } } });
+  verifier('objet de la partie inconnu refusé (400)', r.statut === 400, `statut ${r.statut}`);
+  r = await req('GET', '/api/designations', { jeton });
+  verifier('désignations en cours', r.statut === 200 && 'CONDUCTEUR' in r.json.designations && 'VIP' in r.json.designations, JSON.stringify(r.json));
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', parametres: { nombreCible: 3 } } });
+  verifier('date du Conducteur / VIP obligatoire (400)', r.statut === 400, `statut ${r.statut}`);
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: '2026-02-30', parametres: { nombreCible: 3 } } });
+  verifier('date invalide refusée (400)', r.statut === 400, `statut ${r.statut}`);
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: DEMAIN, parametres: { nombreCible: 3 } } });
   verifier('un R4 crée une partie', r.statut === 201 && /^[A-Z0-9]{6}$/.test(r.json.code), JSON.stringify(r.json));
   r = await req('GET', '/api/admin/joueurs', { jeton });
   verifier('un R4 n\'a toujours pas accès à l\'administration (403)', r.statut === 403);

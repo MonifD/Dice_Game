@@ -282,3 +282,28 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .barre .nav, .barre .profil { display: none; }
   .burger { display: flex; }
 }
+
+/* ---------- objet de la partie (Conducteur / VIP) ---------- */
+.badge.objet.conducteur { background: rgba(245, 165, 36, .14); color: var(--accent-2); border-color: rgba(245, 165, 36, .4); }
+.badge.objet.vip { background: rgba(176, 124, 255, .14); color: #c9a6ff; border-color: rgba(176, 124, 255, .4); }
+.objet-txt { font-weight: 600; }
+.objet-txt.conducteur { color: var(--accent-2); }
+.objet-txt.vip { color: #c9a6ff; }
+.designations { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.designation { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; background: var(--panneau); border: 1px solid var(--bord); }
+.designation .ic { font-size: 34px; width: 54px; height: 54px; display: grid; place-items: center; border-radius: 12px; flex-shrink: 0; }
+.designation.conducteur { border-color: rgba(245, 165, 36, .4); background: linear-gradient(135deg, rgba(245, 165, 36, .12), var(--panneau) 60%); }
+.designation.conducteur .ic { background: rgba(245, 165, 36, .15); }
+.designation.vip { border-color: rgba(176, 124, 255, .4); background: linear-gradient(135deg, rgba(176, 124, 255, .12), var(--panneau) 60%); }
+.designation.vip .ic { background: rgba(176, 124, 255, .15); }
+.designation .titre { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--texte-2); }
+.designation .nom { font-family: var(--titre); font-size: 1.35rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.designation .txt { min-width: 0; }
+.choix-objet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choix-objet label { cursor: pointer; margin: 0; }
+.choix-objet input { position: absolute; opacity: 0; pointer-events: none; }
+.choix-objet span { display: block; text-align: center; padding: 14px 10px; border-radius: 12px; border: 2px solid var(--bord); background: var(--panneau-2); font-weight: 600; transition: border-color .15s, background .15s; }
+.choix-objet input:checked + span { border-color: var(--accent); background: rgba(245, 165, 36, .12); color: var(--accent-2); }
+.choix-objet input[value="VIP"]:checked + span { border-color: #b07cff; background: rgba(176, 124, 255, .12); color: #c9a6ff; }
+.choix-objet input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+#filtres .btn.actif { border-color: var(--accent); color: var(--accent-2); }

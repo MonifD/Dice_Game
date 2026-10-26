@@ -143,7 +143,7 @@
     if (!etat) return;
     $('#icone').textContent = etat.departage ? '⚡' : etat.miniJeu.icone;
     $('#nom-jeu').textContent = etat.miniJeu.nom + (etat.departage ? ' — mort subite' : '');
-    $('#organisateur').textContent = `organisée par ${etat.organisateur.pseudo}`;
+    $('#organisateur').innerHTML = `${LW.badgeObjet(etat.objet, { long: true, date: etat.dateObjet })} organisée par ${echapper(etat.organisateur.pseudo)}`;
     const phases = { attente: ['Salle d\'attente', 'vert'], tour: [`Tour ${etat.tour}${etat.essai ? ' (rejoué)' : ''}`, 'or'], resultats: [`Résultats du tour ${etat.dernierResultat?.tour ?? ''}`, 'or'], termine: [etat.annulee ? 'Arrêtée' : 'Terminée', etat.annulee ? 'rouge' : 'bleu'] };
     const [txt, cls] = phases[etat.phase];
     $('#phase').textContent = txt; $('#phase').className = `badge ${cls}`;
@@ -405,8 +405,9 @@
     const moiGagne = g.id === String(moi.id);
     scene.innerHTML = `<div class="gagnant">
       <div class="trophee">🏆</div>
-      <div class="muet" style="text-transform:uppercase;letter-spacing:.2em;margin-top:10px">${moiGagne ? 'Victoire !' : 'Le grand gagnant est'}</div>
+      <div class="muet" style="text-transform:uppercase;letter-spacing:.2em;margin-top:10px">${moiGagne ? 'Victoire !' : LW.objets[etat.objet] ? `${LW.objets[etat.objet].long} le ${LW.jour(etat.dateObjet)}` : 'Le grand gagnant est'}</div>
       <div class="nom">${echapper(g.pseudo)}</div>
+      ${moiGagne && LW.objets[etat.objet] ? `<p style="font-size:1.2rem;margin:4px 0">${LW.objets[etat.objet].icone} Tu seras <b>${LW.objets[etat.objet].long}</b> le <b>${LW.jour(etat.dateObjet)}</b> !</p>` : ''}
       <p class="muet">${etat.miniJeu.icone} ${echapper(etat.miniJeu.nom)} · ${etat.joueurs.length} joueurs · ${etat.tour} tours</p>
       <div class="ligne" style="justify-content:center;margin-top:16px"><a class="btn principal" href="/accueil">Retour à l'accueil</a><a class="btn" href="/historique">Historique</a></div>
     </div>`;

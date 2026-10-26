@@ -34,6 +34,17 @@
       <form class="panneau cache" id="form-partie" style="margin-top:16px">
         <h2 id="titre-params">2. Paramètres</h2>
         <p class="muet" id="desc-jeu"></p>
+        <div class="champ">
+          <label>Objet de la partie <span class="muet petit">(ce que gagne le vainqueur)</span></label>
+          <div class="choix-objet" id="choix-objet">
+            <label><input type="radio" name="objet" value="CONDUCTEUR" required><span>🚂 Conducteur du train</span></label>
+            <label><input type="radio" name="objet" value="VIP" required><span>⭐ VIP du train</span></label>
+          </div>
+        </div>
+        <div class="champ">
+          <label for="date-objet">Le gagnant sera Conducteur / VIP le</label>
+          <input type="date" id="date-objet" required style="max-width:220px">
+        </div>
         <div class="params" id="params"></div>
         <button class="btn principal geant" style="width:100%;margin-top:8px">Créer la salle d'attente</button>
       </form>
@@ -125,6 +136,8 @@
         $('#form-partie').classList.remove('cache');
         $('#titre-params').textContent = `2. Paramètres — ${jeuChoisi.icone} ${jeuChoisi.nom}`;
         $('#desc-jeu').textContent = jeuChoisi.description;
+        if (!$('#date-objet').value) $('#date-objet').value = LW.aujourdhui();
+        $('#date-objet').min = LW.aujourdhui();
         const propres = jeuChoisi.parametres.filter((p) => !p.commun);
         const communs = jeuChoisi.parametres.filter((p) => p.commun);
         $('#params').innerHTML = propres.map(champParam).join('') + (propres.length ? '' : '') + communs.map(champParam).join('');
@@ -138,7 +151,11 @@
           parametres[p.cle] = p.type === 'booleen' ? el.checked : el.value;
         }
         try {
-          const { code } = await api('/api/salles', { methode: 'POST', corps: { miniJeu: jeuChoisi.id, parametres } });
+          const objet = document.querySelector('input[name="objet"]:checked')?.value;
+          if (!objet) { toast('Choisis l\'objet de la partie : Conducteur ou VIP du train.', 'erreur'); return; }
+          const dateObjet = $('#date-objet').value;
+          if (!dateObjet) { toast('Choisis la date à laquelle le gagnant sera Conducteur ou VIP.', 'erreur'); return; }
+          const { code } = await api('/api/salles', { methode: 'POST', corps: { miniJeu: jeuChoisi.id, objet, dateObjet, parametres } });
           location.href = `/salle?code=${code}`;
         } catch (err) { toast(err.message, 'erreur'); }
       };

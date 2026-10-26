@@ -22,6 +22,39 @@
     setTimeout(() => t.remove(), 4000);
   };
 
+  /** Date courte « 28/10 ». */
+  LW.dateCourte = (d) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+
+  // ---------------------------------------------------------- objet de la partie (Conducteur / VIP du train)
+  LW.objets = {
+    CONDUCTEUR: { icone: '🚂', court: 'Conducteur', long: 'Conducteur du train', cls: 'conducteur' },
+    VIP: { icone: '⭐', court: 'VIP', long: 'VIP du train', cls: 'vip' },
+  };
+  /** « AAAA-MM-JJ » -> « 28/10 » (sans passer par Date : pas de décalage de fuseau). */
+  LW.jour = (s) => { const [, m, d] = String(s || '').slice(0, 10).split('-'); return d && m ? `${d}/${m}` : ''; };
+  /** Date du jour à Paris, « AAAA-MM-JJ ». */
+  LW.aujourdhui = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  /** Badge « 🚂 Conducteur le 28/10 » (vide si la partie n'a pas d'objet). */
+  LW.badgeObjet = (objet, { long = false, date = null } = {}) => {
+    const o = LW.objets[objet];
+    return o ? `<span class="badge objet ${o.cls}">${o.icone} ${long ? o.long : o.court}${date ? ` le ${LW.jour(date)}` : ''}</span>` : '';
+  };
+  /** Cartes « Conducteur actuel / VIP actuel » (dernier gagnant de chaque type). */
+  LW.afficherDesignations = async (conteneur) => {
+    try {
+      const { designations, aujourdhui } = await LW.api('/api/designations');
+      conteneur.innerHTML = `<div class="designations">${Object.entries(LW.objets).map(([cle, o]) => {
+        const d = designations[cle];
+        return `<div class="designation ${o.cls}">
+          <div class="ic">${o.icone}</div>
+          <div class="txt"><div class="titre">${o.long}${d ? ` · ${d.dateObjet === aujourdhui ? 'aujourd\'hui' : `le ${LW.jour(d.dateObjet)}`}` : ''}</div>
+            ${d ? `<div class="nom">${LW.echapper(d.gagnant.pseudo)}</div><div class="muet petit">gagné au ${d.icone} ${LW.echapper(d.miniJeu)}</div>`
+              : '<div class="nom muet">Personne pour l\'instant</div>'}
+          </div></div>`;
+      }).join('')}</div>`;
+    } catch { conteneur.innerHTML = ''; }
+  };
+
   // ---------------------------------------------------------- API
   LW.api = async (chemin, { methode = 'GET', corps } = {}) => {
     const rep = await fetch(chemin, {

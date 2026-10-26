@@ -14,6 +14,7 @@
       <h1 id="bonjour" style="margin:0">Bienvenue</h1>
       <a class="btn principal cache" id="btn-creer" href="/admin#creer">＋ Créer une partie</a>
     </div>
+    <div id="designations" style="margin-bottom:16px"></div>
 
     <div class="grille" style="grid-template-columns: 2fr 1fr; align-items:start" id="grille-accueil">
       <section class="panneau">
@@ -83,7 +84,7 @@
         $('#nb-victoires').textContent = s.victoires;
         $('#nb-parties').textContent = s.parties;
         $('#dernieres').innerHTML = s.dernieresVictoires.map((v) =>
-          `<div class="ligne espace"><span>🏆 ${echapper(v.miniJeu)}</span><span class="muet">${LW.date(v.dateFin)} · ${v.nbParticipants} joueurs</span></div>`).join('');
+          `<div class="ligne espace"><span>${LW.objets[v.objet]?.icone || '🏆'} ${LW.objets[v.objet] ? `${LW.objets[v.objet].court}${v.dateObjet ? ` le ${LW.jour(v.dateObjet)}` : ''} · ` : ''}${echapper(v.miniJeu)}</span><span class="muet">${LW.date(v.dateFin)} · ${v.nbParticipants} joueurs</span></div>`).join('');
       }
 
       $('#form-code').onsubmit = (e) => {
@@ -92,7 +93,7 @@
         if (code) location.href = `/salle?code=${encodeURIComponent(code)}`;
       };
 
-      await Promise.all([chargerSalles(), chargerStats()]);
+      await Promise.all([chargerSalles(), chargerStats(), LW.afficherDesignations($('#designations'))]);
       LW.chat.monter($('#chat'), 'general', { titre: '💬 Chat de l\'alliance' });
       // Mises à jour en direct de la liste
       const socket = await LW.socket();
