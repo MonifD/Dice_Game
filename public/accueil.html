@@ -67,7 +67,7 @@
         $('#nb-salles').textContent = salles.length;
         $('#salles').innerHTML = salles.length ? salles.map((s) => {
           const [txt, couleur] = PHASES[s.phase] || ['', ''];
-          return `<a class="carte-salle" href="/salle?code=${s.code}">
+          return `<a class="carte-salle" href="/salle?code=${s.code}${s.phase === 'attente' ? '&rejoindre=1' : ''}">
             <div class="icone">${s.miniJeu.icone}</div>
             <div class="infos">
               <div class="ligne"><b>${echapper(s.miniJeu.nom)}</b><span class="badge ${couleur}">${txt}</span></div>
@@ -90,7 +90,7 @@
       $('#form-code').onsubmit = (e) => {
         e.preventDefault();
         const code = $('#code').value.trim().toUpperCase();
-        if (code) location.href = `/salle?code=${encodeURIComponent(code)}`;
+        if (code) location.href = `/salle?code=${encodeURIComponent(code)}&rejoindre=1`;
       };
 
       await Promise.all([chargerSalles(), chargerStats(), LW.afficherDesignations($('#designations'))]);

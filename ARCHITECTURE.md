@@ -136,7 +136,7 @@ Phases d'une salle : `attente → tour → resultats → tour → … → termin
 2. **Lancement** : `initialiser()` du mini-jeu, participations créées, tour 1.
 3. **Tour** : `debutTour()` donne la consigne publique et d'éventuels événements programmés.
    Les actions sont stockées dans un hash Redis par tour (sans verrouiller toute la salle : 100 joueurs
-   peuvent jouer en même temps). Le tour se termine quand tout le monde a fini **ou** au chrono (+0,6 s de tolérance réseau).
+   peuvent jouer en même temps). Le tour se termine quand tout le monde a fini (2 s plus tard, pour laisser voir le dernier coup) **ou** au chrono (+0,6 s de tolérance réseau).
 4. **Résolution** (sous verrou, une seule instance) : `resoudreTour()` du mini-jeu, puis règles communes :
    * absent (n'a pas joué) = éliminé ;
    * plus aucun survivant → **le tour est rejoué** entre les mêmes joueurs (l'état du jeu est restauré) ;

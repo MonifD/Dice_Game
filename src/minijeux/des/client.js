@@ -3,6 +3,11 @@
   const POINTS = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
   const style = document.createElement('style');
   style.textContent = `
+    .des-joueurs { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .ligne-de { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--panneau-2); font-size: .9rem; opacity: .7; }
+    .ligne-de.gagne { opacity: 1; border: 1px solid rgba(63, 191, 111, .45); background: var(--vert-fond); }
+    .ligne-de .face-mini { font-size: 1.6rem; line-height: 1; }
+    .ligne-de .moi { color: var(--accent-2); font-weight: 700; }
     .de { width: 120px; height: 120px; border-radius: 22px; background: linear-gradient(145deg, #fff, #dfe3ea);
       box-shadow: 0 12px 30px rgba(0,0,0,.45), inset 0 -6px 0 rgba(0,0,0,.08); display: grid;
       grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 16px; gap: 4px; }
@@ -73,7 +78,10 @@
       const gagnante = d.phase === 'qualification' ? d.cible : d.max;
       zone.innerHTML = `<div class="faces">${compte.map((n, i) => `<div class="face-col ${i + 1 === gagnante ? 'gagne' : ''}">
           <b>${n}</b><div class="colonne" style="height:${(n / max) * 90}px"></div><span style="font-size:1.4rem">${'⚀⚁⚂⚃⚄⚅'[i]}</span></div>`).join('')}</div>
-        <div class="muet petit">${d.phase === 'qualification' ? `Il fallait faire ${d.cible}.` : `Plus haut résultat : ${d.max}.`}</div>`;
+        <div class="muet petit">${d.phase === 'qualification' ? `Il fallait faire ${d.cible}.` : `Plus haut résultat : ${d.max}.`}</div>
+        <div class="des-joueurs">${[6, 5, 4, 3, 2, 1].filter((v) => compte[v - 1]).map((v) => `<div class="ligne-de ${v === gagnante ? 'gagne' : ''}">
+          <span class="face-mini">${'⚀⚁⚂⚃⚄⚅'[v - 1]}</span>
+          <span>${d.lignes.filter((l) => l.valeur === v).map((l) => `<span class="${l.joueurId === String(ctx.moi.id) ? 'moi' : ''}">${LW.echapper(ctx.pseudo(l.joueurId))}</span>`).join(', ')}</span></div>`).join('')}</div>`;
     },
   };
 })();

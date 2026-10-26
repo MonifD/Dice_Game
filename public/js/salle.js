@@ -17,6 +17,9 @@
 (async () => {
   const { $, $$, echapper, h, toast } = LW;
   const code = (new URLSearchParams(location.search).get('code') || '').toUpperCase();
+  // « Rejoindre » depuis l'accueil : inscription automatique en arrivant (une seule fois, l'URL est nettoyée)
+  let rejoindreAuto = new URLSearchParams(location.search).get('rejoindre') === '1';
+  if (rejoindreAuto) history.replaceState(null, '', `/salle?code=${encodeURIComponent(code)}`);
   if (!code) { location.href = '/accueil'; return; }
 
   const moi = await LW.session();
@@ -45,6 +48,13 @@
       return;
     }
     recevoirEtat(rep.etat, true);
+    if (rejoindreAuto) {
+      rejoindreAuto = false;
+      if (etat.phase === 'attente' && !monJoueur()) {
+        const r = await LW.emettre('salle:inscrire', { code });
+        if (!r.ok) toast(r.erreur, 'erreur');
+      }
+    }
   }
   socket.on('connect', () => { majPastille(true); observer(); }); // y compris après une reconnexion
   socket.on('disconnect', () => majPastille(false));

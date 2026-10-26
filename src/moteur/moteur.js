@@ -29,6 +29,7 @@ const { ErreurJeu, rng } = require('./outils');
 const perms = require('../services/permissions');
 
 const GRACE_MS = 600; // tolérance réseau après la fin du chrono
+const DELAI_DERNIER_COUP_MS = 2000; // quand tout le monde a joué : on laisse voir le dernier coup (ex. dé qui roule) avant les résultats
 const MAX_REJEUX = 5; // au 5e rejeu consécutif d'un même tour, on passe en mort subite
 const TTL_ACTIONS_S = 6 * 3600;
 const TTL_SALLE_TERMINEE_S = 12 * 3600;
@@ -326,6 +327,8 @@ class Moteur {
       if (fini) {
         nbFinis = await stockage.incr(`${cle}:n`);
         await stockage.expire(`${cle}:n`, TTL_ACTIONS_S);
+        await stockage.set(`${cle}:t`, String(Date.now()));
+        await stockage.expire(`${cle}:t`, TTL_ACTIONS_S);
       }
       return { ...r, fini, nbFinis };
     }, { ttlMs: 3000, attenteMaxMs: 3000 });
@@ -335,9 +338,9 @@ class Moteur {
         tour: tc.numero, essai: tc.essai, joueurId: id, pseudo: j.pseudo, fini: res.fini, public: res.public ?? null,
       });
     }
-    // Tout le monde a joué : on termine le tour sans attendre le chrono.
+    // Tout le monde a joué : on termine le tour sans attendre le chrono (après avoir laissé voir le dernier coup).
     if (res.fini && res.nbFinis >= this.idsEnJeu(etat).length) {
-      this.traiter(code).catch((e) => console.error('[moteur] fin anticipée', e));
+      setTimeout(() => this.traiter(code).catch((e) => console.error('[moteur] fin anticipée', e)), DELAI_DERNIER_COUP_MS + 50).unref?.();
     }
     return { prive: res.prive ?? null, fini: res.fini, public: res.public ?? null };
   }
@@ -539,8 +542,10 @@ class Moteur {
         const tc = etat.tourCourant;
         let tousOntJoue = false;
         if (this.module(etat).actionRequise !== false) {
-          const n = parseInt((await stockage.get(`${cleActions(code, tc.numero, tc.essai)}:n`)) || '0', 10);
-          tousOntJoue = n >= this.idsEnJeu(etat).length;
+          const cle = cleActions(code, tc.numero, tc.essai);
+          const n = parseInt((await stockage.get(`${cle}:n`)) || '0', 10);
+          const dernierCoup = parseInt((await stockage.get(`${cle}:t`)) || '0', 10);
+          tousOntJoue = n >= this.idsEnJeu(etat).length && maintenant - dernierCoup >= DELAI_DERNIER_COUP_MS;
         }
         if (tousOntJoue || maintenant >= etat.echeance) { await this.resoudreTour(etat); change = true; }
       } else if (etat.phase === 'resultats' && etat.echeance && maintenant >= etat.echeance) {
