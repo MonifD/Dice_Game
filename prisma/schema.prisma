@@ -1,0 +1,122 @@
+// =============================================================
+//  Schéma de base de données — Last War : Jeux d'élimination
+//  PostgreSQL (Neon / Supabase / local) via Prisma
+// =============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  engineType      = "client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Connexion directe (sans pooler) utilisée par les migrations (Neon/Supabase).
+  directUrl = env("DIRECT_URL")
+}
+
+/// Rôle applicatif (droits d'administration)
+enum Role {
+  JOUEUR
+  ADMIN
+  SUPER_ADMIN
+}
+
+/// Rang dans l'alliance Last War
+enum Rang {
+  R1
+  R2
+  R3
+  R4
+  R5
+}
+
+enum StatutPartie {
+  ATTENTE
+  EN_COURS
+  TERMINEE
+  ANNULEE
+}
+
+/// Table « joueurs »
+model Joueur {
+  id               Int             @id @default(autoincrement())
+  pseudo           String          @unique // pseudo exact dans Last War
+  pseudoNormalise  String          @unique // minuscule, sans espaces superflus : évite les doublons « Bob » / « bob »
+  motDePasseHash   String // bcrypt, jamais le mot de passe en clair
+  rang             Rang            @default(R1)
+  role             Role            @default(JOUEUR)
+  actif            Boolean         @default(true) // false = compte bloqué
+  dateInscription  DateTime        @default(now())
+  derniereConnexion DateTime?
+
+  partiesOrganisees Partie[]        @relation("Organisateur")
+  partiesGagnees    Partie[]        @relation("Gagnant")
+  participations    Participation[]
+
+  @@map("joueurs")
+}
+
+/// Table « parties »
+model Partie {
+  id               Int             @id @default(autoincrement())
+  code             String          @unique // identifiant court de la salle (ex. « K7Q2PX »)
+  miniJeu          String // identifiant du module (ex. « des »)
+  parametres       Json
+  statut           StatutPartie    @default(ATTENTE)
+  dateCreation     DateTime        @default(now())
+  dateDebut        DateTime?
+  dateFin          DateTime?
+  nbParticipants   Int             @default(0)
+  nbTours          Int             @default(0)
+
+  organisateurId   Int
+  organisateur     Joueur          @relation("Organisateur", fields: [organisateurId], references: [id])
+  gagnantId        Int?
+  gagnant          Joueur?         @relation("Gagnant", fields: [gagnantId], references: [id])
+
+  participations   Participation[]
+
+  @@index([dateCreation])
+  @@map("parties")
+}
+
+/// Table « participations »
+model Participation {
+  id             Int     @id @default(autoincrement())
+  joueurId       Int
+  partieId       Int
+  tourAtteint    Int     @default(0) // dernier tour joué
+  positionFinale Int? // 1 = gagnant ; les éliminés au même tour partagent la même position
+
+  joueur Joueur @relation(fields: [joueurId], references: [id], onDelete: Cascade)
+  partie Partie @relation(fields: [partieId], references: [id], onDelete: Cascade)
+
+  @@unique([joueurId, partieId])
+  @@map("participations")
+}
+
+/// Questions du quiz (gérées depuis l'administration)
+model QuestionQuiz {
+  id           Int      @id @default(autoincrement())
+  categorie    String   @default("Last War") // « Last War » ou « Culture générale »
+  question     String
+  choix        String[] // 2 à 4 réponses possibles
+  bonneReponse Int // index dans « choix »
+  active       Boolean  @default(true)
+  dateCreation DateTime @default(now())
+
+  @@map("questions_quiz")
+}
+
+/// Journal des actions sensibles (consultable par le super admin)
+model Journal {
+  id       Int      @id @default(autoincrement())
+  date     DateTime @default(now())
+  auteurId Int?
+  action   String
+  details  Json?
+
+  @@index([date])
+  @@map("journaux")
+}

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Last War Arène — Administration</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .jeux { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+    .jeu-carte { text-align: left; background: var(--panneau-2); border: 1px solid var(--bord); border-radius: 12px; padding: 12px; cursor: pointer; color: var(--texte); font: inherit; display: flex; gap: 10px; align-items: flex-start; }
+    .jeu-carte:hover { border-color: #3a4350; }
+    .jeu-carte.choisi { border-color: var(--accent); background: var(--accent-fond); }
+    .jeu-carte .ic { font-size: 28px; line-height: 1; }
+    .jeu-carte p { margin: 4px 0 0; font-size: .8rem; color: var(--texte-2); }
+    .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 16px; }
+    .case { display: flex; align-items: center; gap: 10px; }
+    .case label { margin: 0; }
+    tr.moi td { background: var(--accent-fond); }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>Administration</h1>
+    <div class="onglets" id="onglets"></div>
+
+    <!-- Créer une partie -->
+    <section id="onglet-creer" class="cache">
+      <div class="panneau">
+        <h2>1. Choisis le mini-jeu</h2>
+        <div class="jeux" id="jeux"></div>
+      </div>
+      <form class="panneau cache" id="form-partie" style="margin-top:16px">
+        <h2 id="titre-params">2. Paramètres</h2>
+        <p class="muet" id="desc-jeu"></p>
+        <div class="params" id="params"></div>
+        <button class="btn principal geant" style="width:100%;margin-top:8px">Créer la salle d'attente</button>
+      </form>
+    </section>
+
+    <!-- Comptes -->
+    <section id="onglet-comptes" class="cache panneau">
+      <div class="ligne espace">
+        <h2 style="margin:0">Comptes</h2>
+        <input id="recherche" placeholder="Rechercher un pseudo…" style="max-width:260px">
+      </div>
+      <p class="muet petit">Les nouveaux comptes sont R1. Les R4 et R5 peuvent organiser des parties.</p>
+      <div class="defile-x">
+        <table class="tableau">
+          <thead><tr><th>Pseudo</th><th>Rang</th><th>Rôle</th><th>Victoires</th><th>Inscrit le</th><th>Statut</th><th></th></tr></thead>
+          <tbody id="joueurs"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Questions -->
+    <section id="onglet-questions" class="cache">
+      <form class="panneau" id="form-question">
+        <h2 id="titre-question">Nouvelle question</h2>
+        <div class="params">
+          <div class="champ"><label>Catégorie</label>
+            <select id="q-categorie"><option>Last War</option><option>Culture générale</option></select></div>
+        </div>
+        <div class="champ"><label>Question</label><input id="q-question" maxlength="300" required></div>
+        <div class="params" id="q-choix"></div>
+        <p class="muet petit">Coche la bonne réponse. 2 réponses minimum, 4 maximum.</p>
+        <div class="ligne"><button class="btn principal">Enregistrer</button><button type="button" class="btn lien cache" id="q-annuler">Annuler la modification</button></div>
+      </form>
+      <div class="panneau" style="margin-top:16px">
+        <h2>Questions (<span id="nb-questions">0</span>)</h2>
+        <div class="defile-x"><table class="tableau"><thead><tr><th>Catégorie</th><th>Question</th><th>Bonne réponse</th><th>Active</th><th></th></tr></thead><tbody id="questions"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- Journaux -->
+    <section id="onglet-journaux" class="cache panneau">
+      <h2>Journal des actions</h2>
+      <div class="defile-x"><table class="tableau"><thead><tr><th>Date</th><th>Auteur</th><th>Action</th><th>Détails</th></tr></thead><tbody id="journaux"></tbody></table></div>
+    </section>
+  </main>
+
+  <script src="/js/commun.js"></script>
+  <script>
+    (async () => {
+      const { $, $$, echapper, api, toast } = LW;
+      const moi = await LW.session();
+      if (!LW.peutOrganiser(moi)) { location.href = '/accueil'; return; }
+      LW.barre('admin');
+
+      // ------------------------------------------------ onglets selon les droits
+      const onglets = [['creer', 'Créer une partie', true], ['comptes', 'Comptes & rangs', LW.estAdmin(moi)],
+        ['questions', 'Questions du quiz', LW.estAdmin(moi)], ['journaux', 'Journaux', LW.estSuperAdmin(moi)]].filter((o) => o[2]);
+      $('#onglets').innerHTML = onglets.map(([id, t]) => `<button data-onglet="${id}">${t}</button>`).join('');
+      const charges = {};
+      const ouvrir = (id) => {
+        if (!onglets.some((o) => o[0] === id)) id = 'creer';
+        $$('#onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.onglet === id));
+        onglets.forEach(([o]) => $(`#onglet-${o}`).classList.toggle('cache', o !== id));
+        history.replaceState(null, '', `#${id}`);
+        if (!charges[id]) { charges[id] = true; ({ creer: chargerJeux, comptes: chargerJoueurs, questions: chargerQuestions, journaux: chargerJournaux })[id](); }
+      };
+      $$('#onglets button').forEach((b) => (b.onclick = () => ouvrir(b.dataset.onglet)));
+
+      // ------------------------------------------------ création de partie
+      let jeux = [];
+      let jeuChoisi = null;
+      async function chargerJeux() {
+        ({ minijeux: jeux } = await api('/api/minijeux'));
+        $('#jeux').innerHTML = jeux.map((j) => `<button type="button" class="jeu-carte" data-id="${j.id}">
+          <span class="ic">${j.icone}</span><span><b>${echapper(j.nom)}</b><p>${echapper(j.description)}</p></span></button>`).join('');
+        $$('.jeu-carte').forEach((b) => (b.onclick = () => choisirJeu(b.dataset.id)));
+      }
+      function champParam(p) {
+        const id = `p-${p.cle}`;
+        if (p.type === 'booleen') return `<div class="champ case"><input type="checkbox" id="${id}" ${p.defaut ? 'checked' : ''}><label for="${id}">${echapper(p.libelle)}</label></div>`;
+        if (p.type === 'choix') return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><select id="${id}">${p.options.map((o) =>
+          `<option value="${echapper(o.valeur)}" ${String(o.valeur) === String(p.defaut) ? 'selected' : ''}>${echapper(o.libelle)}</option>`).join('')}</select>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
+        if (p.type === 'nombre') return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><input type="number" id="${id}" value="${p.defaut}" ${p.min !== undefined ? `min="${p.min}"` : ''} ${p.max !== undefined ? `max="${p.max}"` : ''} step="${p.pas || 1}">${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
+        return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><input id="${id}" value="${echapper(p.defaut ?? '')}"></div>`;
+      }
+      function choisirJeu(id) {
+        jeuChoisi = jeux.find((j) => j.id === id);
+        $$('.jeu-carte').forEach((b) => b.classList.toggle('choisi', b.dataset.id === id));
+        $('#form-partie').classList.remove('cache');
+        $('#titre-params').textContent = `2. Paramètres — ${jeuChoisi.icone} ${jeuChoisi.nom}`;
+        $('#desc-jeu').textContent = jeuChoisi.description;
+        const propres = jeuChoisi.parametres.filter((p) => !p.commun);
+        const communs = jeuChoisi.parametres.filter((p) => p.commun);
+        $('#params').innerHTML = propres.map(champParam).join('') + (propres.length ? '' : '') + communs.map(champParam).join('');
+        $('#form-partie').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      $('#form-partie').onsubmit = async (e) => {
+        e.preventDefault();
+        const parametres = {};
+        for (const p of jeuChoisi.parametres) {
+          const el = $(`#p-${p.cle}`);
+          parametres[p.cle] = p.type === 'booleen' ? el.checked : el.value;
+        }
+        try {
+          const { code } = await api('/api/salles', { methode: 'POST', corps: { miniJeu: jeuChoisi.id, parametres } });
+          location.href = `/salle?code=${code}`;
+        } catch (err) { toast(err.message, 'erreur'); }
+      };
+
+      // ------------------------------------------------ comptes
+      const RANGS = ['R1', 'R2', 'R3', 'R4', 'R5'];
+      let recherche = '';
+      async function chargerJoueurs() {
+        const { joueurs } = await api(`/api/admin/joueurs?q=${encodeURIComponent(recherche)}`);
+        $('#joueurs').innerHTML = joueurs.map((j) => {
+          const m = j.modifiable;
+          const role = j.role === 'SUPER_ADMIN' ? '<span class="badge bleu">Super admin</span>'
+            : LW.estSuperAdmin(moi) && m ? `<select data-role="${j.id}" style="width:auto;padding:6px"><option value="JOUEUR" ${j.role === 'JOUEUR' ? 'selected' : ''}>Joueur</option><option value="ADMIN" ${j.role === 'ADMIN' ? 'selected' : ''}>Admin</option></select>`
+            : j.role === 'ADMIN' ? '<span class="badge bleu">Admin</span>' : '<span class="muet">Joueur</span>';
+          return `<tr class="${j.id === moi.id ? 'moi' : ''}">
+            <td><b>${echapper(j.pseudo)}</b></td>
+            <td>${m ? `<select data-rang="${j.id}" style="width:auto;padding:6px">${RANGS.map((r) => `<option ${r === j.rang ? 'selected' : ''}>${r}</option>`).join('')}</select>` : `<span class="badge or">${j.rang}</span>`}</td>
+            <td>${role}</td><td>${j.victoires}</td><td class="muet petit">${LW.date(j.dateInscription)}</td>
+            <td>${j.actif ? '<span class="badge vert">Actif</span>' : '<span class="badge rouge">Bloqué</span>'}</td>
+            <td>${m ? `<div class="ligne" style="gap:4px;flex-wrap:nowrap">
+              <button class="btn petit" data-bloquer="${j.id}" data-actif="${j.actif}">${j.actif ? 'Bloquer' : 'Débloquer'}</button>
+              <button class="btn petit" data-mdp="${j.id}" title="Réinitialiser le mot de passe">🔑</button>
+              <button class="btn petit danger" data-supprimer="${j.id}" data-pseudo="${echapper(j.pseudo)}">Supprimer</button></div>` : ''}</td></tr>`;
+        }).join('') || '<tr><td colspan="7" class="vide">Aucun joueur.</td></tr>';
+
+        $$('[data-rang]').forEach((s) => (s.onchange = () => action(`/api/admin/joueurs/${s.dataset.rang}/rang`, 'PATCH', { rang: s.value }, 'Rang mis à jour.')));
+        $$('[data-role]').forEach((s) => (s.onchange = () => action(`/api/admin/joueurs/${s.dataset.role}/role`, 'PATCH', { role: s.value }, 'Rôle mis à jour.')));
+        $$('[data-bloquer]').forEach((b) => (b.onclick = () => action(`/api/admin/joueurs/${b.dataset.bloquer}/actif`, 'PATCH', { actif: b.dataset.actif !== 'true' }, 'Compte mis à jour.')));
+        $$('[data-mdp]').forEach((b) => (b.onclick = () => {
+          const mdp = prompt('Nouveau mot de passe (6 caractères minimum) :');
+          if (mdp) action(`/api/admin/joueurs/${b.dataset.mdp}/mot-de-passe`, 'POST', { motDePasse: mdp }, 'Mot de passe réinitialisé.');
+        }));
+        $$('[data-supprimer]').forEach((b) => (b.onclick = () => {
+          if (confirm(`Supprimer définitivement le compte « ${b.dataset.pseudo} » ?`)) action(`/api/admin/joueurs/${b.dataset.supprimer}`, 'DELETE', null, 'Compte supprimé.');
+        }));
+      }
+      async function action(url, methode, corps, ok) {
+        try { await api(url, { methode, corps }); toast(ok, 'ok'); } catch (e) { toast(e.message, 'erreur'); }
+        chargerJoueurs();
+      }
+      let delai;
+      $('#recherche').oninput = (e) => { clearTimeout(delai); delai = setTimeout(() => { recherche = e.target.value; chargerJoueurs(); }, 250); };
+
+      // ------------------------------------------------ questions du quiz
+      let enEdition = null;
+      const champsChoix = (choix = ['', '', '', ''], bonne = 0) => {
+        $('#q-choix').innerHTML = [0, 1, 2, 3].map((i) => `<div class="champ"><label><input type="radio" name="bonne" value="${i}" ${i === bonne ? 'checked' : ''} style="width:auto;margin-right:6px">Réponse ${i + 1}</label>
+          <input class="q-rep" maxlength="120" value="${echapper(choix[i] || '')}" ${i < 2 ? 'required' : ''}></div>`).join('');
+      };
+      champsChoix();
+      let questions = [];
+      async function chargerQuestions() {
+        ({ questions } = await api('/api/admin/questions'));
+        $('#nb-questions').textContent = questions.length;
+        $('#questions').innerHTML = questions.map((q) => `<tr><td><span class="badge">${echapper(q.categorie)}</span></td><td>${echapper(q.question)}</td>
+          <td class="muet">${echapper(q.choix[q.bonneReponse])}</td><td>${q.active ? '✅' : '—'}</td>
+          <td class="ligne" style="gap:4px;flex-wrap:nowrap"><button class="btn petit" data-edit="${q.id}">Modifier</button><button class="btn petit" data-bascule="${q.id}">${q.active ? 'Désactiver' : 'Activer'}</button><button class="btn petit danger" data-suppr="${q.id}">✕</button></td></tr>`).join('')
+          || '<tr><td colspan="5" class="vide">Aucune question. Ajoute-en pour pouvoir lancer un quiz.</td></tr>';
+        $$('[data-edit]').forEach((b) => (b.onclick = () => editer(questions.find((q) => q.id === Number(b.dataset.edit)))));
+        $$('[data-bascule]').forEach((b) => (b.onclick = async () => {
+          const q = questions.find((x) => x.id === Number(b.dataset.bascule));
+          await api(`/api/admin/questions/${q.id}`, { methode: 'PUT', corps: { ...q, active: !q.active } }).catch((e) => toast(e.message, 'erreur'));
+          chargerQuestions();
+        }));
+        $$('[data-suppr]').forEach((b) => (b.onclick = async () => {
+          if (!confirm('Supprimer cette question ?')) return;
+          await api(`/api/admin/questions/${b.dataset.suppr}`, { methode: 'DELETE' }).catch((e) => toast(e.message, 'erreur'));
+          chargerQuestions();
+        }));
+      }
+      function editer(q) {
+        enEdition = q;
+        $('#titre-question').textContent = q ? 'Modifier la question' : 'Nouvelle question';
+        $('#q-annuler').classList.toggle('cache', !q);
+        $('#q-categorie').value = q?.categorie || 'Last War';
+        $('#q-question').value = q?.question || '';
+        champsChoix(q?.choix, q?.bonneReponse ?? 0);
+        if (q) $('#form-question').scrollIntoView({ behavior: 'smooth' });
+      }
+      $('#q-annuler').onclick = () => editer(null);
+      $('#form-question').onsubmit = async (e) => {
+        e.preventDefault();
+        const reps = $$('.q-rep').map((i) => i.value.trim());
+        const bonneIndex = Number($('input[name="bonne"]:checked').value);
+        if (!reps[bonneIndex]) return toast('La bonne réponse cochée est vide.', 'erreur');
+        // on retire les réponses vides en recalculant l'index de la bonne réponse
+        const choix = [];
+        let bonneReponse = 0;
+        reps.forEach((r, i) => { if (r) { if (i === bonneIndex) bonneReponse = choix.length; choix.push(r); } });
+        const corps = { categorie: $('#q-categorie').value, question: $('#q-question').value, choix, bonneReponse, active: enEdition ? enEdition.active : true };
+        try {
+          await api(enEdition ? `/api/admin/questions/${enEdition.id}` : '/api/admin/questions', { methode: enEdition ? 'PUT' : 'POST', corps });
+          toast('Question enregistrée.', 'ok');
+          editer(null);
+          chargerQuestions();
+        } catch (err) { toast(err.message, 'erreur'); }
+      };
+
+      // ------------------------------------------------ journaux
+      async function chargerJournaux() {
+        const { journaux } = await api('/api/admin/journaux');
+        $('#journaux').innerHTML = journaux.map((j) => `<tr><td class="petit">${LW.date(j.date)}</td><td>${echapper(j.auteur || '–')}</td>
+          <td><span class="badge">${echapper(j.action)}</span></td><td class="muet petit">${echapper(j.details ? JSON.stringify(j.details) : '')}</td></tr>`).join('')
+          || '<tr><td colspan="4" class="vide">Rien pour le moment.</td></tr>';
+      }
+
+      ouvrir(location.hash.slice(1) || 'creer');
+    })();
+  </script>
+</body>
+</html>

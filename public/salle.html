@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Last War Arène — Salle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="page">
+    <div class="entete-salle">
+      <span class="icone" id="icone">🎮</span>
+      <div style="flex:1;min-width:180px">
+        <h1 id="nom-jeu" style="margin:0;font-size:1.5rem">Chargement…</h1>
+        <div class="ligne petit muet" style="gap:8px">
+          <span>Salle <span class="code-salle" id="code"></span></span>
+          <span id="organisateur"></span>
+        </div>
+      </div>
+      <div class="ligne">
+        <span class="badge" id="phase"></span>
+        <span class="badge vert" id="compteur"></span>
+        <span class="badge" id="connexion" title="Connexion temps réel">●</span>
+      </div>
+    </div>
+
+    <div class="salle">
+      <div class="pile">
+        <div id="bandeau"></div>
+        <section class="panneau scene" id="scene"></section>
+        <section class="panneau panneau-orga cache" id="orga">
+          <div class="ligne espace">
+            <h3 style="margin:0">🎛 Organisation</h3>
+            <div class="ligne" id="orga-boutons"></div>
+          </div>
+          <p class="muet petit" id="orga-aide" style="margin:8px 0 0"></p>
+        </section>
+      </div>
+      <aside class="pile">
+        <section class="panneau">
+          <div class="ligne espace"><h3 style="margin:0">Joueurs</h3><span class="muet petit" id="nb-joueurs"></span></div>
+          <div class="liste-joueurs" id="joueurs" style="margin-top:10px;max-height:40vh"></div>
+        </section>
+        <div id="chat"></div>
+      </aside>
+    </div>
+  </main>
+  <script src="/js/commun.js"></script>
+  <script src="/js/ui-jeux.js"></script>
+  <script src="/js/chat.js"></script>
+  <script src="/js/salle.js"></script>
+</body>
+</html>

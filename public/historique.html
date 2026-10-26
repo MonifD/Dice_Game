@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Last War Arène — Historique</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="page">
+    <h1>Historique & classement</h1>
+    <div class="onglets">
+      <button data-onglet="parties" class="actif">Parties</button>
+      <button data-onglet="classement">Classement des victoires</button>
+    </div>
+
+    <section class="panneau" id="onglet-parties">
+      <div class="defile-x">
+        <table class="tableau">
+          <thead><tr><th>Date</th><th>Mini-jeu</th><th>Gagnant</th><th>Joueurs</th><th>Tours</th><th>Organisateur</th></tr></thead>
+          <tbody id="parties"><tr><td colspan="6" class="vide">Chargement…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="ligne espace" style="margin-top:12px">
+        <button class="btn petit" id="prec">← Plus récentes</button>
+        <span class="muet petit" id="pagination"></span>
+        <button class="btn petit" id="suiv">Plus anciennes →</button>
+      </div>
+    </section>
+
+    <section class="panneau cache" id="onglet-classement">
+      <div class="defile-x">
+        <table class="tableau">
+          <thead><tr><th>#</th><th>Joueur</th><th>Rang</th><th>Victoires</th><th>Parties jouées</th></tr></thead>
+          <tbody id="classement"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="/js/commun.js"></script>
+  <script>
+    (async () => {
+      const { $, $$, echapper } = LW;
+      await LW.session();
+      LW.barre('historique');
+
+      $$('.onglets button').forEach((b) => (b.onclick = () => {
+        $$('.onglets button').forEach((x) => x.classList.toggle('actif', x === b));
+        $('#onglet-parties').classList.toggle('cache', b.dataset.onglet !== 'parties');
+        $('#onglet-classement').classList.toggle('cache', b.dataset.onglet !== 'classement');
+        if (b.dataset.onglet === 'classement') chargerClassement();
+      }));
+
+      let page = 1;
+      async function chargerParties() {
+        const d = await LW.api(`/api/historique?page=${page}`);
+        const pages = Math.max(1, Math.ceil(d.total / d.parPage));
+        $('#pagination').textContent = `Page ${d.page} / ${pages} · ${d.total} parties`;
+        $('#prec').disabled = page <= 1;
+        $('#suiv').disabled = page >= pages;
+        $('#parties').innerHTML = d.parties.length ? d.parties.map((p) => `<tr>
+          <td>${LW.date(p.date)}</td>
+          <td>${p.icone} ${echapper(p.miniJeu)}</td>
+          <td>${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b>${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
+          <td>${p.nbParticipants}</td><td>${p.nbTours}</td><td class="muet">${echapper(p.organisateur)}</td></tr>`).join('')
+          : '<tr><td colspan="6" class="vide">Aucune partie terminée pour l\'instant.</td></tr>';
+      }
+      $('#prec').onclick = () => { page--; chargerParties(); };
+      $('#suiv').onclick = () => { page++; chargerParties(); };
+
+      async function chargerClassement() {
+        const { classement } = await LW.api('/api/classement');
+        const medaille = ['🥇', '🥈', '🥉'];
+        $('#classement').innerHTML = classement.length ? classement.map((c) => `<tr class="${c.joueur?.id === LW.moi.id ? 'moi' : ''}">
+          <td>${medaille[c.rang - 1] || c.rang}</td><td><b>${echapper(c.joueur?.pseudo)}</b></td>
+          <td><span class="badge or">${c.joueur?.rang || ''}</span></td>
+          <td class="chiffre" style="font-size:1.2rem">${c.victoires}</td><td>${c.parties}</td></tr>`).join('')
+          : '<tr><td colspan="5" class="vide">Pas encore de vainqueur.</td></tr>';
+      }
+      chargerParties();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Déploiement sur Render (alternative à Vercel) : New + > Blueprint > ce dépôt.
+# Un serveur Node classique, toujours allumé : idéal pour les WebSockets.
+services:
+  - type: web
+    name: last-war-arene
+    runtime: node
+    plan: starter            # le plan gratuit s'endort après 15 min d'inactivité
+    buildCommand: npm ci && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/sante
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: REDIS_URL       # facultatif avec une seule instance
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SUPER_ADMIN_PSEUDO
+        sync: false
+      - key: SUPER_ADMIN_MOT_DE_PASSE
+        sync: false

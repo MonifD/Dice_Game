@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Last War Arène — Accueil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="page">
+    <div class="ligne espace" style="margin-bottom:16px">
+      <h1 id="bonjour" style="margin:0">Bienvenue</h1>
+      <a class="btn principal cache" id="btn-creer" href="/admin#creer">＋ Créer une partie</a>
+    </div>
+
+    <div class="grille" style="grid-template-columns: 2fr 1fr; align-items:start" id="grille-accueil">
+      <section class="panneau">
+        <div class="ligne espace"><h2 style="margin:0">Parties ouvertes</h2><span class="badge" id="nb-salles">…</span></div>
+        <p class="muet petit">Rejoins une salle d'attente avant le lancement. Une fois la partie commencée, tu peux la suivre en spectateur.</p>
+        <div class="pile" id="salles"><div class="vide">Chargement…</div></div>
+        <form class="ligne" id="form-code" style="margin-top:16px">
+          <input id="code" placeholder="Code de salle (ex. K7Q2PX)" maxlength="8" style="flex:1;min-width:160px;text-transform:uppercase">
+          <button class="btn">Rejoindre</button>
+        </form>
+      </section>
+
+      <aside class="pile">
+        <section class="panneau">
+          <h3>Mes victoires</h3>
+          <div class="ligne" style="gap:24px">
+            <div><div class="chiffre" id="nb-victoires">–</div><div class="muet petit">victoires</div></div>
+            <div><div class="chiffre" style="color:var(--texte)" id="nb-parties">–</div><div class="muet petit">parties jouées</div></div>
+          </div>
+          <div class="pile petit" id="dernieres" style="margin-top:12px;gap:6px"></div>
+        </section>
+        <div id="chat"></div>
+        <section class="panneau">
+          <h3>Comment ça marche ?</h3>
+          <ol class="muet petit" style="padding-left:18px;margin:0">
+            <li>Un R4, R5 ou admin crée une salle et choisit le mini-jeu.</li>
+            <li>Tu rejoins la salle d'attente.</li>
+            <li>À chaque tour, joue avant la fin du chrono, sinon tu es éliminé.</li>
+            <li>Éliminé ? Tu restes en spectateur jusqu'au bout.</li>
+            <li>Le dernier survivant gagne !</li>
+          </ol>
+        </section>
+      </aside>
+    </div>
+  </main>
+  <style>@media (max-width: 860px) { #grille-accueil { grid-template-columns: 1fr !important; } }</style>
+  <script src="/js/commun.js"></script>
+  <script src="/js/chat.js"></script>
+  <script>
+    (async () => {
+      const { $, echapper } = LW;
+      const moi = await LW.session();
+      LW.barre('accueil');
+      $('#bonjour').textContent = `Salut ${moi.pseudo} 👋`;
+      if (LW.peutOrganiser(moi)) $('#btn-creer').classList.remove('cache');
+
+      const PHASES = { attente: ['Salle d\'attente', 'vert'], tour: ['En cours', 'or'], resultats: ['En cours', 'or'] };
+      async function chargerSalles() {
+        const { salles } = await LW.api('/api/salles');
+        $('#nb-salles').textContent = salles.length;
+        $('#salles').innerHTML = salles.length ? salles.map((s) => {
+          const [txt, couleur] = PHASES[s.phase] || ['', ''];
+          return `<a class="carte-salle" href="/salle?code=${s.code}">
+            <div class="icone">${s.miniJeu.icone}</div>
+            <div class="infos">
+              <div class="ligne"><b>${echapper(s.miniJeu.nom)}</b><span class="badge ${couleur}">${txt}</span></div>
+              <div class="muet petit">par ${echapper(s.organisateur)} · code <b>${s.code}</b> · ${s.phase === 'attente'
+                ? `${s.nbJoueurs} inscrit(s)` : `tour ${s.tour} · ${s.enJeu}/${s.nbJoueurs} en jeu`}</div>
+            </div>
+            <span class="btn petit">${s.phase === 'attente' ? 'Rejoindre' : 'Regarder'}</span>
+          </a>`;
+        }).join('') : '<div class="vide">Aucune partie pour le moment.<br>Attends qu\'un R4/R5 en crée une.</div>';
+      }
+
+      async function chargerStats() {
+        const s = await LW.api('/api/moi/stats');
+        $('#nb-victoires').textContent = s.victoires;
+        $('#nb-parties').textContent = s.parties;
+        $('#dernieres').innerHTML = s.dernieresVictoires.map((v) =>
+          `<div class="ligne espace"><span>🏆 ${echapper(v.miniJeu)}</span><span class="muet">${LW.date(v.dateFin)} · ${v.nbParticipants} joueurs</span></div>`).join('');
+      }
+
+      $('#form-code').onsubmit = (e) => {
+        e.preventDefault();
+        const code = $('#code').value.trim().toUpperCase();
+        if (code) location.href = `/salle?code=${encodeURIComponent(code)}`;
+      };
+
+      await Promise.all([chargerSalles(), chargerStats()]);
+      LW.chat.monter($('#chat'), 'general', { titre: '💬 Chat de l\'alliance' });
+      // Mises à jour en direct de la liste
+      const socket = await LW.socket();
+      let attente = null;
+      const rafraichir = () => { clearTimeout(attente); attente = setTimeout(() => chargerSalles().catch(() => {}), 400); };
+      socket.on('connect', () => { LW.emettre('accueil:suivre'); rafraichir(); });
+      socket.on('salles:maj', rafraichir);
+      if (socket.connected) LW.emettre('accueil:suivre');
+    })();
+  </script>
+</body>
+</html>
