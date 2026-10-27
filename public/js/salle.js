@@ -147,6 +147,16 @@
     if (!premier && ancienne !== etat.phase && etat.phase === 'termine' && etat.gagnant?.id === String(moi.id)) toast('🏆 Tu as gagné !', 'ok');
     if (!premier && ancienne === 'attente' && etat.phase === 'tour' && monJoueur()) LW.son.depart();
     rendre();
+    // Nouveau tour (lancement ou « Tour suivant ») : on ramène la zone de jeu à l'écran si elle n'y est pas
+    // (ex. organisateur resté sur son panneau en bas, joueur parti lire le chat sur téléphone).
+    if (!premier && etat.phase === 'tour' && ancienne !== 'tour') ramenerSurLeJeu();
+  }
+
+  function ramenerSurLeJeu() {
+    const scene = $('#scene');
+    const r = scene.getBoundingClientRect();
+    const hautBarre = document.querySelector('.barre')?.offsetHeight || 0;
+    if (r.top < hautBarre || r.top > window.innerHeight * 0.6) scene.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ------------------------------------------------------------ rendu

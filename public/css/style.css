@@ -390,3 +390,6 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .pagination { display: grid; grid-template-columns: 1fr 1fr; }
   .pagination #pagination { grid-column: 1 / -1; order: -1; text-align: center; }
 }
+
+/* la zone de jeu ne passe pas sous la barre du haut (fixe) quand on y remonte automatiquement */
+#scene { scroll-margin-top: 76px; }
