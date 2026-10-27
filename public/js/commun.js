@@ -72,6 +72,8 @@
   // ---------------------------------------------------------- droits (miroir de src/services/permissions.js, pour l'affichage seulement)
   LW.estAdmin = (j) => j && (j.role === 'ADMIN' || j.role === 'SUPER_ADMIN');
   LW.estSuperAdmin = (j) => j && j.role === 'SUPER_ADMIN';
+  /** Seuls les rangs R4 et R5 sont affichés à côté des pseudos (R1–R3 : le nom seul). */
+  LW.rangVisible = (rang) => rang === 'R4' || rang === 'R5';
   LW.peutOrganiser = (j) => j && (LW.estAdmin(j) || j.rang === 'R4' || j.rang === 'R5');
   LW.libelleRole = (j) => (j.role === 'SUPER_ADMIN' ? 'Super admin' : j.role === 'ADMIN' ? 'Admin' : '');
 
@@ -98,7 +100,7 @@
       ['historique', '/historique', 'Historique'],
       ...(LW.peutOrganiser(j) ? [['admin', '/admin', LW.estAdmin(j) ? 'Administration' : 'Organiser']] : []),
     ];
-    const badges = `<span class="badge or">${LW.echapper(j.rang)}</span>
+    const badges = `${LW.rangVisible(j.rang) ? `<span class="badge or">${LW.echapper(j.rang)}</span>` : ''}
           ${LW.libelleRole(j) ? `<span class="badge bleu">${LW.libelleRole(j)}</span>` : ''}`;
     const barre = LW.h(`
       <header class="barre">

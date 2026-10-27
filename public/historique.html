@@ -94,7 +94,7 @@
         const medaille = ['🥇', '🥈', '🥉'];
         $('#classement').innerHTML = classement.length ? classement.map((c) => `<tr class="${c.joueur?.id === LW.moi.id ? 'moi' : ''}">
           <td>${medaille[c.rang - 1] || c.rang}</td><td><b>${echapper(c.joueur?.pseudo)}</b></td>
-          <td><span class="badge or">${c.joueur?.rang || ''}</span></td>
+          <td>${LW.rangVisible(c.joueur?.rang) ? `<span class="badge or">${c.joueur.rang}</span>` : ''}</td>
           <td class="chiffre" style="font-size:1.2rem">${c.victoires}</td><td>${c.parties}</td></tr>`).join('')
           : '<tr><td colspan="5" class="vide">Pas encore de vainqueur.</td></tr>';
       }

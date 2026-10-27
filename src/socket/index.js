@@ -17,13 +17,14 @@
  *   accueil:suivre   {}                  recevoir les mises à jour de la liste des salles
  *   chat:rejoindre   { canal }           'general' ou 'salle:<code>' -> 100 derniers messages
  *   chat:quitter     { canal }
- *   chat:envoyer     { canal, texte }
+ *   chat:envoyer     { canal, texte, reponseA? }  reponseA = id du message auquel on répond
+ *   chat:reagir      { canal, id, emoji }          emoji 62 (❤) ou 74 (🎉) ; 2e clic = retirer
  *   chat:supprimer   { canal, id }       auteur, R4/R5/admins
  *   chat:muet        { joueurId, minutes } admins (0 = lever la sanction)
  *
  * Serveur -> client :
  *   salle:etat, salle:inscription, salle:desinscription, salle:pret, salle:alerte, jeu:aAgi, jeu:evenement, salles:maj,
- *   chat:message, chat:supprime, chat:muet
+ *   chat:message, chat:supprime, chat:muet, chat:reaction { canal, id, reactions }
  */
 const { Server } = require('socket.io');
 const cookie = require('cookie');
@@ -146,11 +147,17 @@ function creerServeurSocket(httpServer) {
       return { messages: await chat.historique(c), muetMs: await chat.restantMuet(moi.id) };
     }));
     socket.on('chat:quitter', gestionnaire(socket, async ({ canal }) => { socket.leave(`chat:${chat.verifierCanal(canal)}`); }));
-    socket.on('chat:envoyer', gestionnaire(socket, async ({ canal, texte }) => {
+    socket.on('chat:envoyer', gestionnaire(socket, async ({ canal, texte, reponseA }) => {
       const c = await canalValide(canal);
-      const message = await chat.envoyer(c, moi, texte);
+      const message = await chat.envoyer(c, moi, texte, reponseA);
       io.to(`chat:${c}`).emit('chat:message', message);
       return { id: message.id };
+    }));
+    socket.on('chat:reagir', gestionnaire(socket, async ({ canal, id, emoji }) => {
+      const c = await canalValide(canal);
+      const reactions = await chat.reagir(c, id, emoji, moi);
+      io.to(`chat:${c}`).emit('chat:reaction', { canal: c, id: String(id), reactions });
+      return { reactions };
     }));
     socket.on('chat:supprimer', gestionnaire(socket, async ({ canal, id }) => {
       const c = chat.verifierCanal(canal);

@@ -105,7 +105,8 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `accueil:suivre` | – | tous | reçoit `salles:maj` quand la liste change |
 | `chat:rejoindre` | `{ canal }` | tous | `general` ou `salle:<code>` ; renvoie les 100 derniers messages |
 | `chat:quitter` | `{ canal }` | tous | ne plus recevoir ce salon |
-| `chat:envoyer` | `{ canal, texte }` | tous (sauf muets) | 200 caractères max, anti-flood 1/s et 6/15 s |
+| `chat:envoyer` | `{ canal, texte, reponseA? }` | tous (sauf muets) | 200 caractères max, anti-flood 1/s et 6/15 s ; `reponseA` = id du message auquel on répond |
+| `chat:reagir` | `{ canal, id, emoji }` | tous (sauf muets) | réaction ❤ (`62`) ou 🎉 (`74`) ; un 2e clic la retire ; 15 / 10 s max |
 | `chat:supprimer` | `{ canal, id }` | auteur, R4/R5/admin | supprime un message |
 | `chat:muet` | `{ joueurId, minutes }` | admin | rend muet (0 = lever) |
 
@@ -118,7 +119,8 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `jeu:aAgi` | `{ tour, essai, joueurId, pseudo, fini, public }` — ex. résultat du dé en direct |
 | `jeu:evenement` | `{ tour, essai, type, donnees }` — ex. feu vert, flash de couleur |
 | `salles:maj` | la liste des salles a changé |
-| `chat:message` | `{ id, canal, auteur: { id, pseudo, rang, role }, texte, date }` |
+| `chat:message` | `{ id, canal, auteur: { id, pseudo, rang, role }, texte, date, reponse?: { id, auteur: { id, pseudo }, texte, supprime? }, reactions }` |
+| `chat:reaction` | `{ canal, id, reactions: { '62': [{ id, pseudo }], '74': [...] } }` — toutes les réactions du message après le changement |
 | `chat:supprime` | `{ canal, id }` |
 | `chat:muet` | `{ muetMs }` — envoyé au joueur sanctionné |
 
@@ -128,6 +130,14 @@ Deux types de salons : **général** (page d'accueil) et **un par salle** (joueu
 Les 100 derniers messages par salon sont gardés dans Redis (24 h pour le général, 12 h pour une salle) ;
 ils ne sont pas archivés en base. Le texte est stocké brut et échappé à l'affichage. Code : `src/services/chatService.js`
 et `public/js/chat.js` (widget réutilisable `LW.chat.monter(conteneur, canal)`).
+
+- **Emojis Last War** : écrits `:lwNN:` dans le texte (images `public/emojis/lw01.png` → `lw79.png`, 7 par ligne
+  dans le sélecteur, dans l'ordre des planches du jeu).
+- **Réponses** : le message porte une citation figée (`reponse`, 100 caractères max) du message d'origine ;
+  si l'original est supprimé, la citation est vidée (`supprime: true`).
+- **Réactions** : hash Redis `chat:reac:<canal>`, champ `<idMessage>:<emoji>:<idJoueur>` = pseudo (une écriture
+  atomique par réaction, pas de conflit entre joueurs). Les réactions des messages disparus sont nettoyées
+  au chargement de l'historique.
 
 ## Le moteur de partie (`src/moteur/moteur.js`)
 
