@@ -332,3 +332,8 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .regles ol { margin: 10px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
 .regles ol li { line-height: 1.45; }
 .regles-communes { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--bord); display: flex; flex-direction: column; gap: 4px; font-size: .88rem; color: var(--texte-2); }
+
+/* barre du salon : Quitter à gauche, interrupteur « Prêt » à droite */
+.barre-salon { flex-wrap: nowrap; gap: 8px; }
+.barre-salon .interrupteur.mini { font-size: .9rem; font-weight: 600; }
+.barre-salon .interrupteur.mini { padding: 6px 0 6px 8px; } /* zone de toucher plus grande sur téléphone (le texte est cliquable) */

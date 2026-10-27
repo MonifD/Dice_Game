@@ -167,9 +167,9 @@
     rendreScene();
   }
 
-  /** Interrupteur « Prêt » sur sa propre ligne de la liste des joueurs (la liste est redessinée : délégation). */
+  /** Interrupteur « Prêt » en haut du cadre du salon (le cadre est redessiné : délégation). */
   let pretEnCours = false;
-  $('#joueurs').addEventListener('change', async (e) => {
+  $('#scene').addEventListener('change', async (e) => {
     if (e.target.id !== 'chk-pret') return;
     const voulu = e.target.checked;
     pretEnCours = true;
@@ -177,8 +177,20 @@
     const rep = await LW.emettre('salle:pret', { code, pret: voulu });
     pretEnCours = false;
     if (!rep.ok) toast(rep.erreur, 'erreur');
-    rendreJoueurs();
+    if (etat.phase === 'attente') sceneAttente($('#scene'));
   });
+
+  /** Ordre des listes : moi d'abord, puis (en partie) les joueurs en jeu, puis les éliminés du plus tard au plus tôt ; ordre alphabétique à égalité. */
+  const alpha = (a, b) => a.pseudo.localeCompare(b.pseudo, 'fr', { sensitivity: 'base' });
+  function ordreJoueurs(a, b) {
+    const moiId = String(moi.id);
+    if (a.id === moiId || b.id === moiId) return a.id === moiId ? -1 : 1;
+    if (etat.phase !== 'attente') {
+      if (a.statut !== b.statut) return a.statut === 'enJeu' ? -1 : 1;
+      if (a.statut === 'elimine' && a.tourElimination !== b.tourElimination) return (b.tourElimination ?? 0) - (a.tourElimination ?? 0);
+    }
+    return alpha(a, b);
+  }
   $('#joueurs').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-exclure]');
     if (!b) return;
@@ -202,18 +214,14 @@
     const tc = etat.tourCourant;
     const actions = new Map((tc?.actions || []).map((a) => [a.joueurId, a]));
     const mod = tc ? LW.miniJeux[etat.jeuActif.id] : null;
-    const tries = [...etat.joueurs].sort((a, b) => (a.statut === b.statut ? 0 : a.statut === 'enJeu' ? -1 : 1)
-      || (b.tourElimination ?? 0) - (a.tourElimination ?? 0));
+    const tries = [...etat.joueurs].sort(ordreJoueurs);
     $('#nb-joueurs').textContent = `${etat.joueurs.length}`;
     $('#joueurs').innerHTML = tries.map((j) => {
       const a = actions.get(j.id);
       let val = '';
-      if (etat.phase === 'attente' && j.id === String(moi.id)) {
-        val = `<label class="interrupteur mini" title="Indique à l'organisateur que tu es prêt à jouer">
-          <span class="lib">${j.pret ? 'Prêt' : 'Pas prêt'}</span><input type="checkbox" id="chk-pret" ${j.pret ? 'checked' : ''} ${pretEnCours ? 'disabled' : ''}><span class="glissiere"></span></label>`;
-      } else if (etat.phase === 'attente') {
+      if (etat.phase === 'attente') {
         val = j.pret ? '<span class="pret-oui">✅ prêt</span>' : '<span class="pret-non">⏳ pas prêt</span>';
-        if (organisateur && !j.pret) val += `<button class="btn-exclure" title="Exclure de la salle" data-exclure="${j.id}" data-pseudo="${echapper(j.pseudo)}">✕</button>`;
+        if (organisateur && !j.pret && j.id !== String(moi.id)) val += `<button class="btn-exclure" title="Exclure de la salle" data-exclure="${j.id}" data-pseudo="${echapper(j.pseudo)}">✕</button>`;
       }
       else if (a) val = a.public != null && mod?.formater ? echapper(mod.formater(a.public, a)) : a.fini ? '✓' : '…';
       else if (j.statut === 'elimine') val = `<span class="muet petit">T${j.tourElimination}</span>`;
@@ -312,7 +320,11 @@
     const prets = nbPrets();
     const params = Object.entries(etat.params).filter(([k]) => !['avanceAuto', 'pauseResultats', 'toursMax'].includes(k));
     scene.innerHTML = `
-      ${inscrit ? '<div class="ligne"><button class="btn lien petit" id="btn-quitter">← Quitter la salle d\'attente</button></div>' : ''}
+      ${inscrit ? `<div class="ligne espace barre-salon">
+        <button class="btn lien petit" id="btn-quitter">← Quitter la salle d'attente</button>
+        <label class="interrupteur mini" title="Indique à l'organisateur que tu es prêt à jouer">
+          <span class="lib">${monJoueur().pret ? 'Prêt' : 'Pas prêt'}</span><input type="checkbox" id="chk-pret" ${monJoueur().pret ? 'checked' : ''} ${pretEnCours ? 'disabled' : ''}><span class="glissiere"></span>
+        </label></div>` : ''}
       <div class="pile" style="align-items:center;text-align:center;padding:10px 0">
         <div style="font-size:64px">${etat.miniJeu.icone}</div>
         <p class="muet" style="max-width:520px;margin-bottom:0">${echapper(etat.miniJeu.description)}</p>
@@ -322,7 +334,7 @@
         ${inscrit ? '' : '<button class="btn principal geant" id="btn-rejoindre">⚔ Rejoindre la partie</button>'}
       </div>
       ${blocRegles()}
-      <div class="puces" style="margin-top:18px">${etat.joueurs.map((x) => `<span class="puce ${x.id === String(moi.id) ? 'moi' : ''} ${x.pret ? 'pret' : 'pas-pret'}">${x.pret ? '✅' : '⏳'} ${echapper(x.pseudo)}</span>`).join('') || '<span class="muet">Personne pour l\'instant.</span>'}</div>`;
+      <div class="puces" style="margin-top:18px">${[...etat.joueurs].sort(ordreJoueurs).map((x) => `<span class="puce ${x.id === String(moi.id) ? 'moi' : ''} ${x.pret ? 'pret' : 'pas-pret'}">${x.pret ? '✅' : '⏳'} ${echapper(x.pseudo)}</span>`).join('') || '<span class="muet">Personne pour l\'instant.</span>'}</div>`;
     const regles = $('.regles', scene);
     if (regles) { regles.open = reglesOuvertes; regles.ontoggle = () => { reglesOuvertes = regles.open; }; }
     $('#btn-rejoindre')?.addEventListener('click', async (e) => {
