@@ -135,12 +135,14 @@
     LW.piedDePage();
   };
 
-  /** Petit pied de page avec la version déployée (utile pour savoir ce qui tourne en production). */
+  /** Pied de page : propriété du site (UPX) et version déployée (utile pour savoir ce qui tourne en production). */
   LW.piedDePage = () => {
     if (document.getElementById('pied-version')) return;
+    const texte = (version) => `Last War Arène · Copyright © ${new Date().getFullYear()} UPX${version ? ` · ${version}` : ''}`;
     const pied = LW.h('<footer id="pied-version" class="muet petit" style="text-align:center;padding:24px 16px;opacity:.6"></footer>');
+    pied.textContent = texte('');
     document.body.appendChild(pied);
-    chargerConfig().then((c) => { pied.textContent = `Last War Arène · ${c.version || ''}`; }).catch(() => {});
+    chargerConfig().then((c) => { pied.textContent = texte(c.version); }).catch(() => {});
   };
 
   // ---------------------------------------------------------- Socket.IO

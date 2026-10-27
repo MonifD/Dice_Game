@@ -43,6 +43,7 @@
   </main>
   <script src="/js/commun.js"></script>
   <script>
+    LW.piedDePage();
     (async () => {
       const { $, $$ } = LW;
       if (await LW.session({ obligatoire: false })) return (location.href = '/accueil');
