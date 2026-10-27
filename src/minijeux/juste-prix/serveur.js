@@ -15,6 +15,12 @@ module.exports = {
   nom: 'Le juste prix',
   icone: '💰',
   description: 'Une image pleine de points s\'affiche quelques secondes : estime combien il y en a. Les plus éloignés sont éliminés.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Une image remplie de points s'affiche ${p.affichage} secondes : regarde bien !`,
+    `Estime combien il y a de points (entre ${p.min} et ${p.max}).`,
+    `Les ${p.pourcentElimines} % les plus éloignés du bon nombre sont éliminés.`,
+  ],
   dureeTourDefaut: 20,
   parametres: [
     { cle: 'min', libelle: 'Nombre de points minimum', type: 'nombre', min: 5, max: 400, defaut: 30 },

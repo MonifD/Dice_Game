@@ -38,20 +38,23 @@ const rng = {
  * @returns {string[]} ids des survivants. Les ex aequo à la limite survivent ensemble
  *                    (on n'élimine jamais au hasard entre deux scores identiques).
  *                    Garantit au moins 1 survivant et, si possible, au moins 1 éliminé.
+ *                    Finale toujours en duel : tant qu'il reste plus de 2 joueurs, au moins 2 passent
+ *                    (on ne passe jamais de 3 joueurs ou plus à un seul gagnant en un tour).
  */
 function garderMeilleurs(liste, pourcentElimines) {
   if (liste.length <= 1) return liste.map((x) => x.id);
   const tries = [...liste].sort((a, b) => b.score - a.score);
-  let nbGardes = Math.max(1, Math.round(tries.length * (1 - pourcentElimines / 100)));
+  const minGardes = tries.length > 2 ? 2 : 1;
+  let nbGardes = Math.max(minGardes, Math.round(tries.length * (1 - pourcentElimines / 100)));
   if (nbGardes >= tries.length) nbGardes = tries.length - 1; // au moins un éliminé par tour
   const seuil = tries[nbGardes - 1].score;
   let gardes = tries.filter((x) => x.score >= seuil);
-  // Si les ex aequo font que tout le monde survit, on élimine quand même les strictement plus bas
-  // (s'il n'y en a pas, tout le monde est à égalité : tous passent, le tour suivant départagera).
+  // Si les ex aequo font que tout le monde survit, on élimine quand même les strictement plus bas,
+  // à condition qu'il en reste assez (sinon tous passent, le tour suivant départagera).
   if (gardes.length === tries.length) {
     const min = tries[tries.length - 1].score;
     const auDessus = tries.filter((x) => x.score > min);
-    if (auDessus.length) gardes = auDessus;
+    if (auDessus.length >= minGardes) gardes = auDessus;
   }
   return gardes.map((x) => x.id);
 }

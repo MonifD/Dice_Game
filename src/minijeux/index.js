@@ -10,6 +10,7 @@
  * INTERFACE d'un module serveur.js
  * ---------------------------------
  *  id, nom, description, icone        textes affichés
+ *  regles(params) -> [phrases]         règles affichées en salle d'attente (avec les réglages de la partie)
  *  parametres: [{ cle, libelle, type: 'nombre'|'choix'|'booleen'|'texte', min, max, defaut, options }]
  *  dureeTourDefaut  (s)               durée par défaut d'un tour (paramètre commun « dureeTour »)
  *  actionRequise    (défaut true)     false = tour automatique (ex. roue) : personne n'est éliminé pour absence
@@ -31,6 +32,10 @@
  *        et termine la partie s'il reste un seul joueur.
  *  estTermine?({ etat, enJeu })  -> true pour finir (départage automatique s'il reste plusieurs joueurs)
  *  vuePublique?({ etat })        -> infos permanentes visibles de tous (ex. points des enchères)
+ *  commandeOrganisateur?({ donnees, params, prochainTour })
+ *        -> réglages du prochain tour choisis par l'organisateur en salle d'attente ou entre deux tours
+ *           (ex. options A / B de « La minorité ») ; reçus ensuite dans initialiser/debutTour({ reglages }).
+ *           Côté navigateur : LW.miniJeux[id].orga(zone, ctx) affiche le formulaire (ctx.envoyer(donnees)).
  */
 const fs = require('fs');
 const path = require('path');

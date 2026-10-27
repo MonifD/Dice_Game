@@ -25,6 +25,12 @@ module.exports = {
   nom: 'Feu rouge, feu vert',
   icone: '🚦',
   description: 'Clique pour avancer seulement quand le feu est VERT. Un clic au rouge = éliminé. Les plus avancés à la fin passent.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'Clique sur « Avancer » pour faire un pas, mais SEULEMENT quand le feu est VERT.',
+    'Un clic quand le feu est ROUGE = éliminé !',
+    `À la fin du temps, les ${p.pourcentElimines} % les moins avancés sont éliminés.`,
+  ],
   dureeTourDefaut: 20,
   parametres: [
     { cle: 'pourcentElimines', libelle: '% des moins avancés éliminés', type: 'nombre', min: 10, max: 90, defaut: 50 },

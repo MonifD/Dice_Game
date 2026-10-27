@@ -11,6 +11,12 @@ module.exports = {
   nom: 'Nombre mystère',
   icone: '🔢',
   description: 'Propose un nombre entre 1 et 100. Le serveur tire le nombre mystère : les plus éloignés sont éliminés.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Propose un nombre entre 1 et ${p.max}.`,
+    'À la fin du tour, le serveur tire le nombre mystère.',
+    `Les ${p.pourcentElimines} % les plus éloignés du nombre mystère sont éliminés.`,
+  ],
   dureeTourDefaut: 20,
   parametres: [
     { cle: 'max', libelle: 'Nombre maximum', type: 'nombre', min: 10, max: 1000, defaut: 100 },

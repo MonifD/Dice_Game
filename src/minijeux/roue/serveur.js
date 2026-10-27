@@ -8,6 +8,12 @@ module.exports = {
   nom: 'Roue de la fortune',
   icone: '🎡',
   description: 'Personne ne joue : la roue désigne au hasard les éliminés de chaque tour. Pur hasard !',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'Rien à faire : regarde la roue tourner !',
+    `À chaque tour, elle désigne au hasard ${p.pourcentElimines} % des joueurs, qui sont éliminés.`,
+    'Pur hasard, jusqu\'au dernier survivant.',
+  ],
   actionRequise: false,
   parametresCommunsMasques: ['dureeTour'],
   parametres: [
@@ -23,7 +29,8 @@ module.exports = {
 
   async resoudreTour({ etat, enJeu, params, rng }) {
     const n = enJeu.length;
-    const nbElimines = Math.min(n - 1, Math.max(1, Math.round((n * params.pourcentElimines) / 100)));
+    // finale toujours en duel : à 3 joueurs ou plus, au moins 2 restent
+    const nbElimines = Math.min(n > 2 ? n - 2 : n - 1, Math.max(1, Math.round((n * params.pourcentElimines) / 100)));
     const elimines = rng.echantillon(enJeu, nbElimines);
     return { etat, survivants: enJeu.filter((id) => !elimines.includes(id)), details: { type: 'roue', elimines } };
   },

@@ -55,7 +55,7 @@ last_war/
 │   │   └── outils.js          rng sécurisé, ErreurJeu, garderMeilleurs()
 │   └── minijeux/
 │       ├── index.js           registre (charge automatiquement chaque dossier)
-│       └── <id>/serveur.js + client.js   un dossier par mini-jeu
+│       └── <id>/serveur.js + client.js   un dossier par mini-jeu (serveur.js contient aussi regles(params), affichées en salle d'attente)
 ├── scripts/ci/                version.js (calcul de version) · attendre-calme.js · verifier-prod.js
 ├── docs/CICD.md               mode d'emploi de la pipeline
 └── tests/  minijeux.test.js (unitaires) · integration/ (API, droits, chat)
@@ -67,7 +67,7 @@ last_war/
 | Table | Champs principaux |
 |---|---|
 | `joueurs` | pseudo (unique), pseudoNormalise (unique, insensible à la casse), motDePasseHash (bcrypt), rang R1–R5 (R1 par défaut), rôle JOUEUR/ADMIN/SUPER_ADMIN, actif, dateInscription, derniereConnexion |
-| `parties` | code de salle, miniJeu, parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
+| `parties` | code de salle, miniJeu, **objet** (CONDUCTEUR / VIP du train) + **dateObjet** (jour où le gagnant l’exerce) — vides pour les anciennes parties, parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
 | `participations` | joueur, partie, tourAtteint, positionFinale (1 = gagnant, ex aequo partagés) |
 | `questions_quiz` | catégorie, question, choix[], bonneReponse, active |
 | `journaux` | date, auteur, action, détails (rangs, blocages, suppressions…) |
@@ -94,10 +94,13 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `salle:observer` | `{ code }` | tous | rejoint la salle, reçoit l'état complet (sert aussi à la reconnexion) |
 | `salle:inscrire` | `{ code }` | tous | s'inscrit en salle d'attente (refusé une fois lancée) |
 | `salle:quitter` | `{ code }` | inscrit | quitte la salle d'attente |
-| `salle:exclure` | `{ code, joueurId }` | R4/R5/admin | retire quelqu'un de la salle d'attente |
-| `salle:lancer` | `{ code }` | R4/R5/admin | lance la partie (≥ 2 joueurs) |
+| `salle:pret` | `{ code, pret }` | inscrit | se déclare prêt / plus prêt (la partie ne se lance que si tous les inscrits sont prêts) |
+| `salle:alerter` | `{ code }` | R4/R5/admin | fait sonner l'alerte « la partie va commencer » chez tous (1 fois / 10 s) |
+| `salle:exclure` | `{ code, joueurId }` | R4/R5/admin | retire quelqu'un **de pas prêt** de la salle d'attente |
+| `salle:lancer` | `{ code }` | R4/R5/admin | lance la partie (≥ 2 joueurs, tous prêts) |
 | `salle:suivant` | `{ code }` | R4/R5/admin | termine le tour en cours, ou lance le suivant |
 | `salle:arreter` | `{ code }` | R4/R5/admin | arrête la partie (enregistrée sans gagnant) |
+| `jeu:orga` | `{ code, donnees }` | R4/R5/admin | réglage du mini-jeu pour le prochain tour, en salle d'attente ou entre deux tours (ex. options A / B de la minorité) |
 | `jeu:action` | `{ code, donnees }` | joueur en jeu | joue son coup (une seule action par tour, sauf jeux de clics) |
 | `accueil:suivre` | – | tous | reçoit `salles:maj` quand la liste change |
 | `chat:rejoindre` | `{ canal }` | tous | `general` ou `salle:<code>` ; renvoie les 100 derniers messages |
@@ -110,6 +113,8 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 |---|---|
 | `salle:etat` | état complet de la salle (à chaque changement de phase) |
 | `salle:inscription` / `salle:desinscription` | `{ id, pseudo, nb }` en salle d'attente |
+| `salle:pret` | `{ id, pret, nbPrets, nb }` |
+| `salle:alerte` | `{ par }` — son + vibration chez les joueurs |
 | `jeu:aAgi` | `{ tour, essai, joueurId, pseudo, fini, public }` — ex. résultat du dé en direct |
 | `jeu:evenement` | `{ tour, essai, type, donnees }` — ex. feu vert, flash de couleur |
 | `salles:maj` | la liste des salles a changé |
@@ -132,13 +137,17 @@ Phases d'une salle : `attente → tour → resultats → tour → … → termin
 2. **Lancement** : `initialiser()` du mini-jeu, participations créées, tour 1.
 3. **Tour** : `debutTour()` donne la consigne publique et d'éventuels événements programmés.
    Les actions sont stockées dans un hash Redis par tour (sans verrouiller toute la salle : 100 joueurs
-   peuvent jouer en même temps). Le tour se termine quand tout le monde a fini **ou** au chrono (+0,6 s de tolérance réseau).
+   peuvent jouer en même temps). Le tour se termine quand tout le monde a fini (2 s plus tard, pour laisser voir le dernier coup) **ou** au chrono (+0,6 s de tolérance réseau).
 4. **Résolution** (sous verrou, une seule instance) : `resoudreTour()` du mini-jeu, puis règles communes :
    * absent (n'a pas joué) = éliminé ;
-   * plus aucun survivant → **le tour est rejoué** entre les mêmes joueurs (l'état du jeu est restauré) ;
+   * plus aucun survivant parmi ceux qui ont joué → **le tour est rejoué entre eux** (l'état du jeu est restauré) ;
+     les absents sont quand même éliminés ; si un seul joueur a joué, il passe ; si personne n'a joué, tout le monde rejoue ;
    * 5 rejeux d'affilée, `toursMax` atteint, ou mini-jeu épuisé (`estTermine`) avec plusieurs survivants → **mort subite** ;
-   * un seul survivant → **gagnant**, enregistrement en base (gagnant, positions, tours atteints).
+   * un seul survivant → **manche décisive** : l'écran des résultats de ce tour s'affiche d'abord (toujours
+     automatiquement), puis le **gagnant** est annoncé et enregistré en base (gagnant, positions, tours atteints).
 5. **Résultats** : écran commun + détails du mini-jeu, puis tour suivant automatique (ou manuel).
+   Un mini-jeu peut demander un temps d'animation (`details.revelationMs`, ex. cartes retournées une à une) :
+   il s'ajoute à la pause, et le message et les listes qualifiés / éliminés n'apparaissent qu'après.
 
 **Multi-instances** : chaque transition prend un verrou Redis (`SET NX PX`) ; chaque instance vérifie
 les échéances toutes les secondes, donc si l'instance qui gérait un tour disparaît, une autre prend le relais.

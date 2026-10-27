@@ -68,7 +68,7 @@ async function unePartie(miniJeu, { bots, org }) {
 
   const rep = await fetch(`${URL}/api/salles`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jeton(org.id)}` },
-    body: JSON.stringify({ miniJeu, parametres: params }),
+    body: JSON.stringify({ miniJeu, objet: Math.random() < 0.5 ? 'CONDUCTEUR' : 'VIP', dateObjet: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }), parametres: params }),
   });
   const { code, erreur } = await rep.json();
   if (!code) throw new Error(`Création de salle refusée : ${erreur}`);
@@ -84,6 +84,7 @@ async function unePartie(miniJeu, { bots, org }) {
   const inscriptions = await Promise.all(sockets.map((s) => emettre(s, 'salle:inscrire', { code })));
   const refusees = inscriptions.filter((r) => !r.ok);
   if (refusees.length) console.warn('  inscriptions refusées :', refusees.slice(0, 3));
+  await Promise.all(sockets.map((s) => emettre(s, 'salle:pret', { code, pret: true })));
 
   const fin = new Promise((resolve) => {
     sockets.forEach((s, i) => {

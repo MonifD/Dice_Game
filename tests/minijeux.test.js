@@ -17,6 +17,25 @@ test('garderMeilleurs : élimine la moitié la plus basse, garde les ex aequo', 
   assert.deepStrictEqual(garderMeilleurs([{ id: 'x', score: 2 }, { id: 'y', score: 1 }], 10), ['x']); // au moins 1 éliminé
 });
 
+test('garderMeilleurs : finale toujours en duel (jamais de 3+ joueurs à un seul gagnant)', () => {
+  const j = (...s) => s.map((score, i) => ({ id: `j${i}`, score }));
+  assert.deepStrictEqual(garderMeilleurs(j(12, 3, 1), 50).sort(), ['j0', 'j1']); // 3 joueurs -> 2 passent
+  assert.deepStrictEqual(garderMeilleurs(j(12, 3, 3), 50).sort(), ['j0', 'j1', 'j2']); // égalité en bas : personne ne sort, on retire
+  assert.deepStrictEqual(garderMeilleurs(j(12, 12, 3), 50).sort(), ['j0', 'j1']);
+  assert.deepStrictEqual(garderMeilleurs(j(9, 5, 4, 2, 1), 90).sort(), ['j0', 'j1']); // 90 % sur 5 -> 2 restent
+  assert.strictEqual(garderMeilleurs(j(9, 5), 90).length, 1); // à 2, la finale désigne le gagnant
+});
+
+test('chaque mini-jeu a des règles lisibles pour la salle d\'attente', () => {
+  for (const m of registre.catalogue()) {
+    const mod = registre.obtenir(m.id);
+    assert.strictEqual(typeof mod.regles, 'function', `${m.id} : il manque regles(params)`);
+    const regles = mod.regles(validerParametres(mod, {}));
+    assert.ok(Array.isArray(regles) && regles.length >= 2, `${m.id} : au moins 2 règles`);
+    for (const r of regles) assert.ok(typeof r === 'string' && r.length > 10 && !/undefined|NaN|\$\{/.test(r), `${m.id} : règle invalide « ${r} »`);
+  }
+});
+
 test('rng : bornes respectées', () => {
   for (let i = 0; i < 2000; i++) { const n = rng.entier(1, 6); assert.ok(n >= 1 && n <= 6); }
   assert.strictEqual(new Set(rng.melanger([1, 2, 3, 4])).size, 4);

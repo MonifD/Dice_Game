@@ -9,8 +9,14 @@ module.exports = {
   id: 'pile-ou-face',
   ordre: 2,
   nom: 'Pile ou face',
-  icone: '🪙',
+  icone: '🌕',
   description: 'Parie pile ou face. La pièce est lancée à la fin du tour : ceux qui se trompent sont éliminés.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: () => [
+    'Choisis Pile ou Face avant la fin du chrono.',
+    'La pièce est lancée à la fin du tour : ceux qui se sont trompés sont éliminés.',
+    'Si tout le monde s\'est trompé, le tour est rejoué entre eux.',
+  ],
   dureeTourDefaut: 15,
   parametres: [],
 

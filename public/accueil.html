@@ -14,6 +14,7 @@
       <h1 id="bonjour" style="margin:0">Bienvenue</h1>
       <a class="btn principal cache" id="btn-creer" href="/admin#creer">＋ Créer une partie</a>
     </div>
+    <div id="designations" style="margin-bottom:16px"></div>
 
     <div class="grille" style="grid-template-columns: 2fr 1fr; align-items:start" id="grille-accueil">
       <section class="panneau">
@@ -21,7 +22,7 @@
         <p class="muet petit">Rejoins une salle d'attente avant le lancement. Une fois la partie commencée, tu peux la suivre en spectateur.</p>
         <div class="pile" id="salles"><div class="vide">Chargement…</div></div>
         <form class="ligne" id="form-code" style="margin-top:16px">
-          <input id="code" placeholder="Code de salle (ex. K7Q2PX)" maxlength="8" style="flex:1;min-width:160px;text-transform:uppercase">
+          <input id="code" placeholder="Code (ex. K7Q2PX)" maxlength="8" style="flex:1;min-width:120px;text-transform:uppercase">
           <button class="btn">Rejoindre</button>
         </form>
       </section>
@@ -66,10 +67,10 @@
         $('#nb-salles').textContent = salles.length;
         $('#salles').innerHTML = salles.length ? salles.map((s) => {
           const [txt, couleur] = PHASES[s.phase] || ['', ''];
-          return `<a class="carte-salle" href="/salle?code=${s.code}">
+          return `<a class="carte-salle" href="/salle?code=${s.code}${s.phase === 'attente' ? '&rejoindre=1' : ''}">
             <div class="icone">${s.miniJeu.icone}</div>
             <div class="infos">
-              <div class="ligne"><b>${echapper(s.miniJeu.nom)}</b><span class="badge ${couleur}">${txt}</span></div>
+              <div class="ligne" style="gap:6px"><b>${echapper(s.miniJeu.nom)}</b><span class="badge ${couleur}">${txt}</span>${LW.badgeObjet(s.objet, { date: s.dateObjet })}</div>
               <div class="muet petit">par ${echapper(s.organisateur)} · code <b>${s.code}</b> · ${s.phase === 'attente'
                 ? `${s.nbJoueurs} inscrit(s)` : `tour ${s.tour} · ${s.enJeu}/${s.nbJoueurs} en jeu`}</div>
             </div>
@@ -83,16 +84,16 @@
         $('#nb-victoires').textContent = s.victoires;
         $('#nb-parties').textContent = s.parties;
         $('#dernieres').innerHTML = s.dernieresVictoires.map((v) =>
-          `<div class="ligne espace"><span>🏆 ${echapper(v.miniJeu)}</span><span class="muet">${LW.date(v.dateFin)} · ${v.nbParticipants} joueurs</span></div>`).join('');
+          `<div class="ligne espace"><span>${LW.objets[v.objet]?.icone || '🏆'} ${LW.objets[v.objet] ? `${LW.objets[v.objet].court}${v.dateObjet ? ` le ${LW.jour(v.dateObjet)}` : ''} · ` : ''}${echapper(v.miniJeu)}</span><span class="muet">${LW.date(v.dateFin)} · ${v.nbParticipants} joueurs</span></div>`).join('');
       }
 
       $('#form-code').onsubmit = (e) => {
         e.preventDefault();
         const code = $('#code').value.trim().toUpperCase();
-        if (code) location.href = `/salle?code=${encodeURIComponent(code)}`;
+        if (code) location.href = `/salle?code=${encodeURIComponent(code)}&rejoindre=1`;
       };
 
-      await Promise.all([chargerSalles(), chargerStats()]);
+      await Promise.all([chargerSalles(), chargerStats(), LW.afficherDesignations($('#designations'))]);
       LW.chat.monter($('#chat'), 'general', { titre: '💬 Chat de l\'alliance' });
       // Mises à jour en direct de la liste
       const socket = await LW.socket();

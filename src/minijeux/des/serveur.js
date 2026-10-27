@@ -13,6 +13,13 @@ module.exports = {
   nom: 'Lancer de dé',
   icone: '🎲',
   description: 'Tour 1 : il faut faire le nombre choisi par l\'organisateur. Ensuite, seuls les plus hauts résultats passent.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Tour 1 (qualification) : clique sur « Lancer le dé » ; il faut faire un ${p.nombreCible}. Ceux qui le font passent, les autres sont éliminés.`,
+    'Si personne ne fait le bon nombre, le tour est rejoué.',
+    'Tours suivants : seuls ceux qui font le plus haut résultat du tour passent.',
+    'Le dé est lancé par le serveur : impossible de tricher.',
+  ],
   dureeTourDefaut: 20,
   parametres: [
     { cle: 'nombreCible', libelle: 'Nombre à obtenir au tour 1', type: 'nombre', min: 1, max: 6, defaut: 6 },

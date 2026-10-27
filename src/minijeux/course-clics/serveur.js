@@ -11,6 +11,13 @@ module.exports = {
   nom: 'Course de clics',
   icone: '👆',
   description: 'Clique le plus vite possible pendant 10 secondes. Les moins rapides sont éliminés.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'Après un compte à rebours de 3 secondes, clique le plus vite possible sur le gros bouton.',
+    `Tu as ${p.dureeTour} secondes. Les scores sont révélés à la fin.`,
+    `Les ${p.pourcentElimines} % qui ont le moins cliqué sont éliminés.`,
+    'Auto-clic interdit : au-delà d\'une certaine cadence, les clics ne comptent pas.',
+  ],
   dureeTourDefaut: 10,
   parametres: [
     { cle: 'pourcentElimines', libelle: '% des plus lents éliminés', type: 'nombre', min: 10, max: 90, defaut: 50 },

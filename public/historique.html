@@ -11,19 +11,25 @@
 <body>
   <main class="page">
     <h1>Historique & classement</h1>
+    <div id="designations" style="margin-bottom:16px"></div>
     <div class="onglets">
       <button data-onglet="parties" class="actif">Parties</button>
       <button data-onglet="classement">Classement des victoires</button>
     </div>
 
     <section class="panneau" id="onglet-parties">
+      <div class="ligne" id="filtres" style="margin-bottom:12px;gap:6px">
+        <button class="btn petit actif" data-objet="">Toutes</button>
+        <button class="btn petit" data-objet="CONDUCTEUR">🚂 Conducteur</button>
+        <button class="btn petit" data-objet="VIP">⭐ VIP</button>
+      </div>
       <div class="defile-x">
-        <table class="tableau">
-          <thead><tr><th>Date</th><th>Mini-jeu</th><th>Gagnant</th><th>Joueurs</th><th>Tours</th><th>Organisateur</th></tr></thead>
-          <tbody id="parties"><tr><td colspan="6" class="vide">Chargement…</td></tr></tbody>
+        <table class="tableau cartes-mobile">
+          <thead><tr><th>Date</th><th>Gagnant</th><th>Désignation</th><th>Mini-jeu</th><th>Joueurs</th><th>Tours</th><th>Organisateur</th></tr></thead>
+          <tbody id="parties"><tr><td colspan="7" class="vide">Chargement…</td></tr></tbody>
         </table>
       </div>
-      <div class="ligne espace" style="margin-top:12px">
+      <div class="ligne espace pagination" style="margin-top:12px">
         <button class="btn petit" id="prec">← Plus récentes</button>
         <span class="muet petit" id="pagination"></span>
         <button class="btn petit" id="suiv">Plus anciennes →</button>
@@ -45,6 +51,7 @@
       const { $, $$, echapper } = LW;
       await LW.session();
       LW.barre('historique');
+      LW.afficherDesignations($('#designations'));
 
       $$('.onglets button').forEach((b) => (b.onclick = () => {
         $$('.onglets button').forEach((x) => x.classList.toggle('actif', x === b));
@@ -54,18 +61,30 @@
       }));
 
       let page = 1;
+      let filtre = '';
+      $$('#filtres [data-objet]').forEach((b) => (b.onclick = () => {
+        filtre = b.dataset.objet; page = 1;
+        $$('#filtres [data-objet]').forEach((x) => x.classList.toggle('actif', x === b));
+        chargerParties();
+      }));
+      /** « 🚂 Conducteur le 28/10 » */
+      function designation(p) {
+        const o = LW.objets[p.objet];
+        return o ? `<span class="objet-txt ${o.cls}">${o.icone} ${o.court}</span>${p.dateObjet ? ` le <b>${LW.jour(p.dateObjet)}</b>` : ''}` : '<span class="muet">–</span>';
+      }
       async function chargerParties() {
-        const d = await LW.api(`/api/historique?page=${page}`);
+        const d = await LW.api(`/api/historique?page=${page}${filtre ? `&objet=${filtre}` : ''}`);
         const pages = Math.max(1, Math.ceil(d.total / d.parPage));
         $('#pagination').textContent = `Page ${d.page} / ${pages} · ${d.total} parties`;
         $('#prec').disabled = page <= 1;
         $('#suiv').disabled = page >= pages;
         $('#parties').innerHTML = d.parties.length ? d.parties.map((p) => `<tr>
-          <td>${LW.date(p.date)}</td>
-          <td>${p.icone} ${echapper(p.miniJeu)}</td>
-          <td>${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b>${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
-          <td>${p.nbParticipants}</td><td>${p.nbTours}</td><td class="muet">${echapper(p.organisateur)}</td></tr>`).join('')
-          : '<tr><td colspan="6" class="vide">Aucune partie terminée pour l\'instant.</td></tr>';
+          <td class="c-date" title="${LW.date(p.date)}"><b>${LW.dateCourte(p.date)}</b></td>
+          <td class="c-gagnant">${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b>${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
+          <td class="c-desig" style="white-space:nowrap">${designation(p)}</td>
+          <td class="c-info">${p.icone} ${echapper(p.miniJeu)}</td>
+          <td class="c-info" data-mobile="joueurs">${p.nbParticipants}</td><td class="c-info" data-mobile="tours">${p.nbTours}</td><td class="c-info muet" data-mobile="par">${echapper(p.organisateur)}</td></tr>`).join('')
+          : '<tr><td colspan="7" class="vide">Aucune partie terminée pour l\'instant.</td></tr>';
       }
       $('#prec').onclick = () => { page--; chargerParties(); };
       $('#suiv').onclick = () => { page++; chargerParties(); };

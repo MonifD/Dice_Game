@@ -38,6 +38,12 @@ module.exports = {
   nom: 'Calcul mental',
   icone: '🧮',
   description: 'Résous le calcul le plus vite possible. Erreur = éliminé, et les plus lents sont éliminés aussi.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Un calcul par tour${p.difficulte === 'progressif' ? ', de plus en plus difficile' : ''} : tape le résultat le plus vite possible.`,
+    'Mauvaise réponse = éliminé.',
+    p.pourcentLents > 0 ? `Parmi les bonnes réponses, les ${p.pourcentLents} % les plus lents sont éliminés.` : 'Toutes les bonnes réponses passent, quel que soit le temps.',
+  ],
   dureeTourDefaut: 20,
   parametres: [
     {

@@ -13,6 +13,13 @@ module.exports = {
   nom: 'Mémoire',
   icone: '🧠',
   description: 'Mémorise la séquence de couleurs puis reproduis-la. Elle s\'allonge à chaque tour. Une erreur = éliminé.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    'Une séquence de couleurs s\'allume : mémorise-la.',
+    'Reproduis-la ensuite en cliquant sur les couleurs dans le même ordre : ta réponse part dès que la séquence est complète.',
+    `La séquence commence à ${p.longueurDepart} couleurs et s'allonge d'une couleur à chaque tour.`,
+    'Une erreur = éliminé.',
+  ],
   dureeTourDefaut: 20,
   parametres: [
     { cle: 'longueurDepart', libelle: 'Longueur de la première séquence', type: 'nombre', min: 2, max: 10, defaut: 3 },

@@ -11,6 +11,12 @@ module.exports = {
   nom: 'Les portes',
   icone: '🚪',
   description: 'Choisis une porte parmi plusieurs. Une porte est piégée : ceux qui l\'ont choisie sont éliminés.',
+  /** Règles affichées en salle d'attente (p = paramètres de la partie). */
+  regles: (p) => [
+    `Choisis une porte parmi ${p.nbPortes}.`,
+    `${p.nbPiegees > 1 ? `${p.nbPiegees} portes sont piégées` : 'Une porte est piégée'} : le serveur la révèle à la fin du tour, ceux qui l'ont choisie sont éliminés.`,
+    p.voirChoix ? 'Tu vois en direct combien de joueurs sont derrière chaque porte.' : 'Les choix des autres restent secrets.',
+  ],
   dureeTourDefaut: 15,
   parametres: [
     { cle: 'nbPortes', libelle: 'Nombre de portes', type: 'nombre', min: 2, max: 8, defaut: 3 },
