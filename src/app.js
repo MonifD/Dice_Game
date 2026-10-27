@@ -61,16 +61,10 @@ function creerApp(obtenirIo) {
       ? path.join(__dirname, 'moteur', 'departage.client.js')
       : registre.obtenir(req.params.id) && path.join(registre.obtenir(req.params.id).dossier, 'client.js');
     if (!fichier || !fs.existsSync(fichier)) return res.status(404).type('js').send('// mini-jeu inconnu');
-    res.set('Cache-Control', 'no-cache').type('application/javascript').sendFile(fichier);
+    res.type('application/javascript').sendFile(fichier);
   });
 
-  // Pages, scripts et styles : le navigateur garde sa copie mais redemande au serveur à chaque visite
-  // si elle a changé (réponse « 304 inchangé » très légère). Ainsi, une nouvelle version livrée est vue
-  // immédiatement par tout le monde, sans rechargement forcé.
-  app.use(express.static(path.join(__dirname, '..', 'public'), {
-    extensions: ['html'],
-    setHeaders: (res) => res.set('Cache-Control', 'no-cache'),
-  }));
+  app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['html'], maxAge: config.env === 'production' ? '1h' : 0 }));
 
   app.use('/api', (req, res) => res.status(404).json({ erreur: 'Route inconnue.' }));
 
