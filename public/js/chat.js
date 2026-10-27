@@ -188,7 +188,7 @@
         ].join('');
         return `<div class="chat-msg ${lui ? 'moi' : ''} ${mention ? 'mention' : ''}" data-id="${m.id}">
           <div class="chat-meta"><b style="color:${COULEUR_RANG[m.auteur.rang] || '#9aa5b4'}">${echapper(m.auteur.pseudo)}</b>
-            <span class="chat-rang">${echapper(m.auteur.rang)}</span>${role}<span class="chat-heure">${heure(m.date)}</span>
+            ${LW.rangVisible(m.auteur.rang) ? `<span class="chat-rang">${echapper(m.auteur.rang)}</span>` : ''}${role}<span class="chat-heure">${heure(m.date)}</span>
             ${actions ? `<span class="chat-actions">${actions}</span>` : ''}</div>
           ${citation(m.reponse)}
           ${(({ html, grand }) => `<div class="chat-texte${grand ? ' grand' : ''}">${html}</div>`)(rendreTexte(m.texte))}
