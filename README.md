@@ -14,7 +14,7 @@ Détails techniques (dossiers, tables, événements Socket.IO) : [ARCHITECTURE.m
 | | Mini-jeu | Règle |
 |---|---|---|
 | 🎲 | Lancer de dé | Tour 1 : faire le nombre choisi par l'organisateur. Ensuite : seuls les plus hauts résultats passent. |
-| 🪙 | Pile ou face | Ceux qui se trompent sont éliminés. |
+| 🌕 | Pile ou face | Ceux qui se trompent sont éliminés. |
 | ⚖️ | La minorité gagne | A ou B : seul le camp le moins nombreux survit. Idéal pour réduire vite 100 joueurs. |
 | 🔢 | Nombre mystère | 1 à 100 : la moitié la plus éloignée du nombre tiré est éliminée. |
 | ✊ | Pierre-feuille-ciseaux | Contre le serveur : perdu = éliminé, égalité = on continue. |
