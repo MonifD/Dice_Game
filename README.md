@@ -33,6 +33,7 @@ Détails techniques (dossiers, tables, événements Socket.IO) : [ARCHITECTURE.m
 **💬 Chat** : un salon général pour l'alliance sur la page d'accueil et un salon dans chaque salle de jeu
 (les éliminés et spectateurs peuvent continuer à parler). Mentions de ton pseudo mises en évidence, anti-flood,
 suppression des messages par les R4/R5/admins, et admins qui peuvent rendre un joueur muet quelques minutes.
+79 emojis Last War (bouton à gauche du champ), réponse à un message (↩) et réactions ❤ / 🎉.
 
 Chaque jeu a ses paramètres (temps par tour, % d'éliminés, difficulté…) en plus des paramètres communs :
 temps par tour, tour suivant automatique ou manuel, durée de l'écran de résultats, nombre de tours max.
@@ -132,7 +133,8 @@ et le même `JWT_SECRET`.
 
 Mot de passe oublié : un admin le réinitialise depuis *Administration → Comptes* (🔑).
 
-Modération du chat : survole un message (ou touche-le sur téléphone) → ✕ pour le supprimer (R4/R5/admins, ou
+Sur un message, survole-le (ou touche-le sur téléphone) : ↩ pour y répondre, ❤ / 🎉 pour réagir (re-clique pour retirer).
+Modération du chat : même geste → ✕ pour le supprimer (R4/R5/admins, ou
 l'auteur), 🔇 pour rendre son auteur muet (admins ; 0 minute = lever la sanction).
 
 ## 5. Tests

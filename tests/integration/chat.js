@@ -50,6 +50,28 @@ const verifier = (nom, condition, detail = '') => { assert.ok(condition, `${nom}
     verifier('salon invalide refusé', !(await em(s1, 'chat:envoyer', { canal: 'n importe quoi', texte: 'hey' })).ok);
 
     const idMsg = recus.at(-1).id;
+
+    // réponses
+    verifier('réponse à un message inconnu refusée', !(await em(s2, 'chat:envoyer', { canal: 'general', texte: 'hein ?', reponseA: 'ffffffffffff' })).ok);
+    r = await em(s2, 'chat:envoyer', { canal: 'general', texte: 'Je te réponds :lw62:', reponseA: idMsg });
+    await attendre(200);
+    const reponse = recus.at(-1);
+    verifier('réponse diffusée avec la citation', r.ok && reponse?.reponse?.id === idMsg && reponse.reponse.auteur.pseudo === j1.pseudo && reponse.reponse.texte === 'Salut <b>tout</b> le monde', JSON.stringify(reponse));
+
+    // réactions ❤ (62) / 🎉 (74)
+    const reactions = [];
+    s1.on('chat:reaction', (x) => reactions.push(x));
+    r = await em(s2, 'chat:reagir', { canal: 'general', id: idMsg, emoji: 62 });
+    await em(sa, 'chat:reagir', { canal: 'general', id: idMsg, emoji: 74 });
+    await attendre(200);
+    verifier('réaction ❤ diffusée', r.ok && reactions.some((x) => x.id === idMsg && x.reactions['62']?.some((p) => p.id === String(j2.id))), JSON.stringify(reactions));
+    verifier('réaction non autorisée refusée', !(await em(s2, 'chat:reagir', { canal: 'general', id: idMsg, emoji: 5 })).ok);
+    verifier('réaction sur un message inconnu refusée', !(await em(s2, 'chat:reagir', { canal: 'general', id: 'ffffffffffff', emoji: 62 })).ok);
+    let reac = (await em(s1, 'chat:rejoindre', { canal: 'general' })).messages.find((m) => m.id === idMsg)?.reactions;
+    verifier('réactions présentes dans l\'historique', reac?.['62']?.length === 1 && reac?.['74']?.length === 1, JSON.stringify(reac));
+    await em(s2, 'chat:reagir', { canal: 'general', id: idMsg, emoji: 62 });
+    reac = (await em(s1, 'chat:rejoindre', { canal: 'general' })).messages.find((m) => m.id === idMsg)?.reactions;
+    verifier('2e clic = réaction retirée', !reac?.['62'] && reac?.['74']?.length === 1, JSON.stringify(reac));
     verifier('un R1 ne supprime pas le message d\'un autre', !(await em(s2, 'chat:supprimer', { canal: 'general', id: idMsg })).ok);
     verifier('un R1 ne peut pas rendre muet', !(await em(s2, 'chat:muet', { joueurId: j1.id, minutes: 5 })).ok);
 
@@ -59,6 +81,8 @@ const verifier = (nom, condition, detail = '') => { assert.ok(condition, `${nom}
     await attendre(200);
     const hist = await em(s2, 'chat:rejoindre', { canal: 'general' });
     verifier('suppression par le super admin (diffusée et retirée de l\'historique)', r.ok && supprimes.length === 1 && !hist.messages.some((m) => m.id === idMsg));
+    const citee = hist.messages.find((m) => m.id === reponse.id)?.reponse;
+    verifier('la citation d\'un message supprimé est effacée', citee?.supprime === true && citee.texte === '', JSON.stringify(citee));
 
     let muet = null;
     s1.on('chat:muet', (x) => { muet = x; });
