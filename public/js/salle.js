@@ -154,7 +154,8 @@
     if (!etat) return;
     $('#icone').textContent = etat.departage ? '⚡' : etat.miniJeu.icone;
     $('#nom-jeu').textContent = etat.miniJeu.nom + (etat.departage ? ' — mort subite' : '');
-    $('#organisateur').innerHTML = `${LW.badgeObjet(etat.objet, { long: true, date: etat.dateObjet })} organisée par ${echapper(etat.organisateur.pseudo)}`;
+    $('#objet-salle').innerHTML = LW.badgeObjet(etat.objet, { long: true, date: etat.dateObjet });
+    $('#organisateur').textContent = `Organisée par ${etat.organisateur.pseudo}`;
     const phases = { attente: ['Salle d\'attente', 'vert'], tour: [`Tour ${etat.tour}${etat.essai ? ' (rejoué)' : ''}`, 'or'], resultats: [`Résultats du tour ${etat.dernierResultat?.tour ?? ''}`, 'or'], termine: [etat.annulee ? 'Arrêtée' : 'Terminée', etat.annulee ? 'rouge' : 'bleu'] };
     const [txt, cls] = phases[etat.phase];
     $('#phase').textContent = txt; $('#phase').className = `badge ${cls}`;

@@ -12,14 +12,15 @@
   <main class="page">
     <div class="entete-salle">
       <span class="icone" id="icone">🎮</span>
-      <div style="flex:1;min-width:180px">
-        <h1 id="nom-jeu" style="margin:0;font-size:1.5rem">Chargement…</h1>
-        <div class="ligne petit muet" style="gap:8px">
+      <div class="entete-titre">
+        <h1 id="nom-jeu">Chargement…</h1>
+        <div class="entete-meta petit muet">
           <span>Salle <span class="code-salle" id="code"></span></span>
-          <span id="organisateur"></span>
+          <span id="objet-salle"></span>
         </div>
+        <div class="petit muet" id="organisateur"></div>
       </div>
-      <div class="ligne">
+      <div class="ligne entete-badges">
         <span class="badge" id="phase"></span>
         <span class="badge vert" id="compteur"></span>
         <span class="badge" id="connexion" title="Connexion temps réel">●</span>

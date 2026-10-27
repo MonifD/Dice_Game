@@ -150,6 +150,9 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .scene { min-height: 380px; position: relative; overflow: hidden; }
 .entete-salle { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .entete-salle .icone { font-size: 34px; }
+.entete-titre { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
+.entete-titre h1 { margin: 0; font-size: 1.5rem; }
+.entete-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 .code-salle { font-family: var(--titre); letter-spacing: .2em; font-weight: 700; background: var(--fond-2); padding: 4px 10px; border-radius: 8px; border: 1px dashed var(--bord); }
 .chrono { height: 8px; background: var(--fond-2); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; }
 .chrono > div { height: 100%; background: linear-gradient(90deg, var(--vert), var(--accent), var(--rouge)); background-size: 300% 100%; transition: width .2s linear; }
@@ -337,3 +340,53 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .barre-salon { flex-wrap: nowrap; gap: 8px; }
 .barre-salon .interrupteur.mini { font-size: .9rem; font-weight: 600; }
 .barre-salon .interrupteur.mini { padding: 6px 0 6px 8px; } /* zone de toucher plus grande sur téléphone (le texte est cliquable) */
+
+/* ================= responsive : téléphone ================= */
+.interrupteur .lib { white-space: nowrap; }
+.joueur-ligne > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.joueur-ligne .val { flex: none; display: inline-flex; align-items: center; white-space: nowrap; }
+.badge { white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .page { padding: 14px 12px 48px; }
+  h1 { font-size: 1.45rem; }
+  .panneau { padding: 14px; }
+  /* en-tête de la salle : icône + titre, puis infos, puis badges sur toute la largeur */
+  .entete-salle { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: start; }
+  .entete-salle .icone { font-size: 30px; line-height: 1; padding-top: 2px; }
+  .entete-titre { min-width: 0; }
+  .entete-titre h1 { font-size: 1.3rem; }
+  .entete-badges { grid-column: 1 / -1; gap: 6px; }
+  .code-salle { padding: 2px 8px; letter-spacing: .12em; }
+  /* panneau d'organisation : titre au-dessus, boutons pleine largeur */
+  #orga > .ligne.espace { flex-direction: column; align-items: stretch; gap: 10px; }
+  #orga-boutons { gap: 8px; }
+  #orga-boutons .btn { flex: 1 1 auto; justify-content: center; }
+  /* cartes de salle (accueil) : icône + infos, bouton en dessous */
+  .carte-salle { display: grid; grid-template-columns: 44px 1fr; gap: 10px 12px; padding: 12px; }
+  .carte-salle .icone { width: 44px; height: 44px; font-size: 26px; }
+  .carte-salle > .btn { grid-column: 1 / -1; justify-content: center; text-align: center; }
+  /* onglets (admin, historique) : sur plusieurs lignes plutôt que coupés */
+  .onglets { flex-wrap: wrap; overflow: visible; }
+  .onglets button { padding: 8px 10px; font-size: .88rem; }
+  .panneau.chat { padding: 0; }
+  .chat-messages { height: 240px; }
+  .regles { padding: 12px; }
+  .regles ol { padding-left: 18px; }
+  .consigne { font-size: 1.05rem; }
+  /* tableaux « cartes » (historique) : une carte par ligne au lieu d'un tableau qui déborde */
+  .tableau.cartes-mobile thead { display: none; }
+  .tableau.cartes-mobile, .tableau.cartes-mobile tbody { display: block; width: 100%; }
+  .tableau.cartes-mobile tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 2px; border-bottom: 1px solid var(--bord); }
+  .tableau.cartes-mobile td { border: none; padding: 0; }
+  .tableau.cartes-mobile .c-gagnant { flex: 1; text-align: right; }
+  .tableau.cartes-mobile .c-desig { width: 100%; }
+  .tableau.cartes-mobile .c-info { font-size: .82rem; color: var(--texte-2); }
+  .tableau.cartes-mobile .c-info[data-mobile]::before { content: '· '; }
+  .tableau.cartes-mobile .c-info[data-mobile="joueurs"]::after { content: ' joueurs'; }
+  .tableau.cartes-mobile .c-info[data-mobile="tours"]::after { content: ' tours'; }
+  .tableau.cartes-mobile .c-info[data-mobile="par"]::before { content: '· par '; }
+  .tableau.cartes-mobile td.vide { width: 100%; }
+  .pagination { display: grid; grid-template-columns: 1fr 1fr; }
+  .pagination #pagination { grid-column: 1 / -1; order: -1; text-align: center; }
+}

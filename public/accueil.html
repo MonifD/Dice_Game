@@ -22,7 +22,7 @@
         <p class="muet petit">Rejoins une salle d'attente avant le lancement. Une fois la partie commencée, tu peux la suivre en spectateur.</p>
         <div class="pile" id="salles"><div class="vide">Chargement…</div></div>
         <form class="ligne" id="form-code" style="margin-top:16px">
-          <input id="code" placeholder="Code de salle (ex. K7Q2PX)" maxlength="8" style="flex:1;min-width:160px;text-transform:uppercase">
+          <input id="code" placeholder="Code (ex. K7Q2PX)" maxlength="8" style="flex:1;min-width:120px;text-transform:uppercase">
           <button class="btn">Rejoindre</button>
         </form>
       </section>
@@ -70,7 +70,7 @@
           return `<a class="carte-salle" href="/salle?code=${s.code}${s.phase === 'attente' ? '&rejoindre=1' : ''}">
             <div class="icone">${s.miniJeu.icone}</div>
             <div class="infos">
-              <div class="ligne"><b>${echapper(s.miniJeu.nom)}</b><span class="badge ${couleur}">${txt}</span></div>
+              <div class="ligne" style="gap:6px"><b>${echapper(s.miniJeu.nom)}</b><span class="badge ${couleur}">${txt}</span>${LW.badgeObjet(s.objet, { date: s.dateObjet })}</div>
               <div class="muet petit">par ${echapper(s.organisateur)} · code <b>${s.code}</b> · ${s.phase === 'attente'
                 ? `${s.nbJoueurs} inscrit(s)` : `tour ${s.tour} · ${s.enJeu}/${s.nbJoueurs} en jeu`}</div>
             </div>

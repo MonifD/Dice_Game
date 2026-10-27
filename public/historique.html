@@ -24,12 +24,12 @@
         <button class="btn petit" data-objet="VIP">⭐ VIP</button>
       </div>
       <div class="defile-x">
-        <table class="tableau">
+        <table class="tableau cartes-mobile">
           <thead><tr><th>Date</th><th>Gagnant</th><th>Désignation</th><th>Mini-jeu</th><th>Joueurs</th><th>Tours</th><th>Organisateur</th></tr></thead>
           <tbody id="parties"><tr><td colspan="7" class="vide">Chargement…</td></tr></tbody>
         </table>
       </div>
-      <div class="ligne espace" style="margin-top:12px">
+      <div class="ligne espace pagination" style="margin-top:12px">
         <button class="btn petit" id="prec">← Plus récentes</button>
         <span class="muet petit" id="pagination"></span>
         <button class="btn petit" id="suiv">Plus anciennes →</button>
@@ -79,11 +79,11 @@
         $('#prec').disabled = page <= 1;
         $('#suiv').disabled = page >= pages;
         $('#parties').innerHTML = d.parties.length ? d.parties.map((p) => `<tr>
-          <td title="${LW.date(p.date)}"><b>${LW.dateCourte(p.date)}</b></td>
-          <td>${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b>${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
-          <td style="white-space:nowrap">${designation(p)}</td>
-          <td>${p.icone} ${echapper(p.miniJeu)}</td>
-          <td>${p.nbParticipants}</td><td>${p.nbTours}</td><td class="muet">${echapper(p.organisateur)}</td></tr>`).join('')
+          <td class="c-date" title="${LW.date(p.date)}"><b>${LW.dateCourte(p.date)}</b></td>
+          <td class="c-gagnant">${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b>${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
+          <td class="c-desig" style="white-space:nowrap">${designation(p)}</td>
+          <td class="c-info">${p.icone} ${echapper(p.miniJeu)}</td>
+          <td class="c-info" data-mobile="joueurs">${p.nbParticipants}</td><td class="c-info" data-mobile="tours">${p.nbTours}</td><td class="c-info muet" data-mobile="par">${echapper(p.organisateur)}</td></tr>`).join('')
           : '<tr><td colspan="7" class="vide">Aucune partie terminée pour l\'instant.</td></tr>';
       }
       $('#prec').onclick = () => { page--; chargerParties(); };
