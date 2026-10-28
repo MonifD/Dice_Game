@@ -27,10 +27,12 @@
     return { html, grand: seul && nb > 0 && nb <= 3 };
   }
   const CLE_RECENTS = 'lw-emojis-recents';
-  const lireRecents = () => { try { return (JSON.parse(localStorage.getItem(CLE_RECENTS)) || []).filter(estEmoji).slice(0, 14); } catch { return []; } };
+  /** Récents : 7 au maximum (une ligne), le plus récent en premier ; un nouveau fait sortir le plus ancien. */
+  const MAX_RECENTS = 7;
+  const lireRecents = () => { try { return (JSON.parse(localStorage.getItem(CLE_RECENTS)) || []).filter(estEmoji).slice(0, MAX_RECENTS); } catch { return []; } };
   /** Réactions possibles (mêmes numéros que côté serveur) : ❤ cœur, 🎉 confettis. */
   const REACTIONS = [{ n: 62, nom: 'J\'adore' }, { n: 74, nom: 'Bravo' }];
-  const noterRecent = (n) => { try { localStorage.setItem(CLE_RECENTS, JSON.stringify([n, ...lireRecents().filter((x) => x !== n)].slice(0, 14))); } catch { /* ignoré */ } };
+  const noterRecent = (n) => { try { localStorage.setItem(CLE_RECENTS, JSON.stringify([n, ...lireRecents().filter((x) => x !== n)].slice(0, MAX_RECENTS))); } catch { /* ignoré */ } };
 
   LW.chat = {
     /**
