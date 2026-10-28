@@ -1,4 +1,4 @@
-# ⚔ Last War Arène
+# ⚔ UPX Arène
 
 Mini-jeux d'élimination en temps réel pour une alliance **Last War: Survival**.
 Jusqu'à 100 joueurs (et plus) jouent depuis leur téléphone ou leur ordinateur. Un R4, un R5 ou un admin choisit un

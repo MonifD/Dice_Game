@@ -20,9 +20,11 @@ permissions:
   pull-requests: write   # commenter la PR
   actions: write         # déclencher la livraison après la fusion
 
-# un nouveau push sur la PR annule les tests en cours (jamais une fois la PR fermée)
+# un nouveau push sur la PR annule les tests en cours (jamais une fois la PR fermée).
+# Modifier seulement la DESCRIPTION de la PR lance un run où tout est « skipped » (rien à tester) :
+# il a son propre groupe pour ne JAMAIS annuler les vrais tests en cours.
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
+  group: pr-${{ github.event.pull_request.number }}${{ github.event.action == 'edited' && github.event.changes.title == null && '-description' || '' }}
   cancel-in-progress: ${{ github.event.pull_request.state == 'open' }}
 
 jobs:

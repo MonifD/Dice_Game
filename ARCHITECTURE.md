@@ -1,4 +1,4 @@
-# Architecture — Last War Arène
+# Architecture — UPX Arène
 
 ## Vue d'ensemble
 

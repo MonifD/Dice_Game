@@ -19,7 +19,7 @@ assurerSuperAdmin().catch((e) => console.error('[demarrage] super admin :', e.me
 
 if (require.main === module) {
   serveur.listen(config.port, () => {
-    console.log(`Last War — jeux d'élimination : http://localhost:${config.port}`);
+    console.log(`UPX Arène — jeux d'élimination : http://localhost:${config.port}`);
   });
   const arret = () => { console.log('Arrêt…'); io.close(); serveur.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
   process.on('SIGTERM', arret);

@@ -25,7 +25,7 @@
   const moi = await LW.session();
   LW.barre('');
   $('#code').textContent = code;
-  document.title = `Last War Arène — Salle ${code}`;
+  document.title = `UPX Arène — Salle ${code}`;
 
   let etat = null;
   let decalage = 0; // horloge serveur - horloge locale

@@ -104,7 +104,7 @@
           ${LW.libelleRole(j) ? `<span class="badge bleu">${LW.libelleRole(j)}</span>` : ''}`;
     const barre = LW.h(`
       <header class="barre">
-        <a class="logo" href="/accueil"><span class="ecusson">⚔</span><span>Last War <span class="muet petit">Arène</span></span></a>
+        <a class="logo" href="/accueil"><img class="ecusson" src="/img/logo-96.jpg" alt="" width="38" height="38"><span>UPX <span class="muet petit">Arène</span></span></a>
         <nav class="nav">${liens.map(([id, href, txt]) => `<a href="${href}" class="${id === pageActive ? 'actif' : ''}">${txt}</a>`).join('')}</nav>
         <div class="profil">
           ${badges}
@@ -140,7 +140,7 @@
   /** Pied de page : propriété du site (UPX) et version déployée (utile pour savoir ce qui tourne en production). */
   LW.piedDePage = () => {
     if (document.getElementById('pied-version')) return;
-    const texte = (version) => `Last War Arène · Copyright © ${new Date().getFullYear()} UPX${version ? ` · ${version}` : ''}`;
+    const texte = (version) => `UPX Arène · Copyright © ${new Date().getFullYear()} UPX${version ? ` · ${version}` : ''}`;
     const pied = LW.h('<footer id="pied-version" class="muet petit" style="text-align:center;padding:24px 16px;opacity:.6"></footer>');
     pied.textContent = texte('');
     document.body.appendChild(pied);

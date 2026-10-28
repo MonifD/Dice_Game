@@ -1,5 +1,5 @@
 /* =============================================================
-   Last War — Jeux d'élimination : thème sombre « QG militaire »
+   UPX Arène — Jeux d'élimination : thème sombre « QG militaire »
    ============================================================= */
 :root {
   --fond: #0c0f13;
@@ -55,7 +55,8 @@ h3 { font-size: 1.05rem; }
   border-bottom: 1px solid var(--bord);
 }
 .logo { font-family: var(--titre); font-weight: 700; font-size: 1.1rem; color: var(--texte); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.logo .ecusson { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), #c46d00); color: #111; font-size: 16px; }
+/* logo UPX : image entière (carrée), sans recadrage */
+.logo .ecusson { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; flex: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 2px 10px rgba(0, 0, 0, .45); }
 .nav { display: flex; gap: 4px; flex: 1; overflow-x: auto; scrollbar-width: none; }
 .nav a { color: var(--texte-2); padding: 6px 10px; border-radius: 8px; white-space: nowrap; font-weight: 500; }
 .nav a.actif, .nav a:hover { color: var(--texte); background: var(--panneau-2); }
@@ -134,7 +135,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .ecran-connexion { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
 .carte-connexion { width: min(420px, 100%); }
 .carte-connexion .entete { text-align: center; margin-bottom: 22px; }
-.carte-connexion .entete .ecusson { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 16px; display: grid; place-items: center; font-size: 34px; background: linear-gradient(135deg, var(--accent), #b85f00); box-shadow: 0 10px 40px rgba(245, 165, 36, .25); }
+.carte-connexion .entete .ecusson { display: block; width: 128px; height: 128px; margin: 0 auto 14px; border-radius: 22px; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 44px rgba(200, 30, 30, .3); }
 
 /* ---------- accueil ---------- */
 .carte-salle { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--bord); border-radius: 12px; background: var(--panneau-2); color: var(--texte); transition: border-color .15s, transform .1s; }
