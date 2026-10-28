@@ -6,7 +6,7 @@
 # une fois les tests passés. Voir docs/CICD.md.
 services:
   - type: web
-    name: last-war-arene
+    name: UPX-arene          # adresse : https://upx-arene.onrender.com (toujours en minuscules)
     runtime: node
     branch: production       # mise à jour uniquement par la pipeline de livraison
     region: frankfurt

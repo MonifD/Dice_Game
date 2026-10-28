@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PROD_URL: ${{ vars.PROD_URL || 'https://last-war-arene.onrender.com' }}
+  PROD_URL: ${{ vars.PROD_URL || 'https://upx-arene.onrender.com' }}
 
 jobs:
   # -------------------------------------------------------------------
@@ -79,7 +79,7 @@ jobs:
     timeout-minutes: 90
     environment:
       name: production
-      url: ${{ vars.PROD_URL || 'https://last-war-arene.onrender.com' }}
+      url: ${{ vars.PROD_URL || 'https://upx-arene.onrender.com' }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
