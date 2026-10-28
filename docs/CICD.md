@@ -176,7 +176,7 @@ git push origin main:production
 ```
 
 ### 3. Render : suivre `production` au lieu de `main`
-Render → service **last-war-arene** → **Settings** → **Build & Deploy** → **Branch** → `production` → Save.
+Render → service **UPX-arene** → **Settings** → **Build & Deploy** → **Branch** → `production` → Save.
 À partir de là, un push sur `main` ne déploie plus rien directement : seule la pipeline met à jour `production`.
 
 ### 4. (Recommandé) Sauvegardes — secrets GitHub
@@ -186,7 +186,7 @@ Dépôt → **Settings** → **Secrets and variables** → **Actions** → **New
   sans elle, les sauvegardes sont illisibles).
 
 Facultatif : variable `PROD_URL` (onglet **Variables**) si l'adresse du site change
-(par défaut `https://last-war-arene.onrender.com`).
+(par défaut `https://upx-arene.onrender.com`).
 
 ### 5. Fusionner la branche `cicd`
 ```bash
