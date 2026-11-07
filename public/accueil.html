@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/img/favicon-192.png">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
@@ -39,7 +39,6 @@
           </div>
           <div class="pile petit" id="dernieres" style="margin-top:12px;gap:6px"></div>
         </section>
-        <div id="chat"></div>
         <section class="panneau">
           <h3>Comment ça marche ?</h3>
           <ol class="muet petit" style="padding-left:18px;margin:0">
@@ -97,7 +96,7 @@
       };
 
       await Promise.all([chargerSalles(), chargerStats(), LW.afficherDesignations($('#designations'))]);
-      LW.chat.monter($('#chat'), 'general', { titre: '💬 Chat de l\'alliance' });
+      LW.chat.monter(document.body, 'general', { titre: '💬 Chat de l\'alliance' });
       // Mises à jour en direct de la liste
       const socket = await LW.socket();
       let attente = null;

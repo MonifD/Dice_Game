@@ -1,8 +1,11 @@
 /**
  * Widget de discussion réutilisable :
- *   LW.chat.monter(conteneur, 'general')        sur l'accueil
- *   LW.chat.monter(conteneur, 'salle:K7Q2PX')   dans une salle de jeu
- * Le panneau peut être replié ; un compteur indique les messages non lus.
+ *   LW.chat.monter(document.body, 'general')        sur l'accueil
+ *   LW.chat.monter(document.body, 'salle:K7Q2PX')   dans une salle de jeu
+ * Replié (par défaut) : bandeau fixé en bas de l'écran, pleine largeur, avec les 2 derniers messages
+ * et un compteur de non-lus. Un appui l'ouvre : plein écran sur téléphone, feuille en bas sur ordinateur.
+ * On le referme avec ✕, Échap ou le bouton « retour » du téléphone.
+ * La hauteur du bandeau est publiée dans la variable CSS --chat-h (espace réservé en bas de page).
  * Sur chaque message : ↩ répondre, ❤ / 🎉 réagir (survol sur ordinateur, appui sur le message sur mobile).
  */
 (function () {
@@ -38,25 +41,33 @@
     /**
      * @param {HTMLElement} conteneur
      * @param {string} canal 'general' ou 'salle:CODE'
-     * @param {{ titre?: string, replie?: boolean }} options
+     * @param {{ titre?: string }} options
      */
-    async monter(conteneur, canal, { titre = '💬 Discussion', replie = false } = {}) {
+    async monter(conteneur, canal, { titre = '💬 Discussion' } = {}) {
       const socket = await LW.socket();
       const moi = LW.moi;
-      const cleReplie = `lw-chat-replie-${canal.startsWith('salle:') ? 'salle' : canal}`;
-      let estReplie = replie;
-      try { const v = localStorage.getItem(cleReplie); if (v !== null) estReplie = v === '1'; } catch { /* stockage indisponible */ }
+      let estOuvert = false;
       let nonLus = 0;
       let muetJusqua = 0;
+      const tactile = () => matchMedia('(hover: none)').matches;
 
-      conteneur.innerHTML = '';
       const panneau = h(`
-        <section class="panneau chat ${estReplie ? 'replie' : ''}">
-          <button class="chat-entete" type="button">
-            <span>${echapper(titre)}</span>
-            <span class="badge or cache chat-non-lus">0</span>
-            <span class="chat-fleche">▾</span>
+        <section class="chat" data-etat="replie">
+          <button class="chat-dock" type="button" aria-expanded="false" aria-label="Ouvrir le chat">
+            <span class="chat-dock-int">
+              <span class="chat-dock-titre">
+                <span>${echapper(titre)}</span>
+                <span class="badge or cache chat-non-lus">0</span>
+                <span class="chat-fleche" aria-hidden="true">▴</span>
+              </span>
+              <span class="chat-derniers"><span class="chat-dernier vide">Chargement…</span></span>
+            </span>
           </button>
+          <div class="chat-feuille" role="dialog" aria-label="${echapper(titre)}">
+          <div class="chat-entete">
+            <span>${echapper(titre)}</span>
+            <button type="button" class="chat-fermer" title="Fermer le chat" aria-label="Fermer le chat">✕</button>
+          </div>
           <div class="chat-corps">
             <div class="chat-messages" aria-live="polite"><div class="vide petit">Chargement…</div></div>
             <div class="chat-muet cache"></div>
@@ -76,8 +87,14 @@
               <button class="btn principal petit" title="Envoyer">➤</button>
             </form>
           </div>
+          </div>
         </section>`);
-      conteneur.appendChild(panneau);
+      // Ajouté à <body> par défaut : un parent avec transform / backdrop-filter casserait le position: fixed.
+      (conteneur || document.body).appendChild(panneau);
+      const racine = document.documentElement;
+      racine.classList.add('avec-chat');
+      const dock = panneau.querySelector('.chat-dock');
+      const derniers = panneau.querySelector('.chat-derniers');
       const liste = panneau.querySelector('.chat-messages');
       const form = panneau.querySelector('.chat-form');
       const input = form.querySelector('input');
@@ -128,21 +145,98 @@
       // (on ignore le formulaire : fermer la boîte au pointerdown déplacerait le bouton « Envoyer » sous le doigt)
       const fermerSiDehors = (e) => { if (!boiteEmojis.classList.contains('cache') && !boiteEmojis.contains(e.target) && !form.contains(e.target)) ouvrirEmojis(false); };
       const fermerEchap = (e) => {
-        if (e.key !== 'Escape') return;
+        if (e.key !== 'Escape' || !estOuvert) return;
         if (!boiteEmojis.classList.contains('cache')) ouvrirEmojis(false);
         else if (reponseA && panneau.contains(document.activeElement)) choisirReponse(null);
+        else ouvrir(false);
       };
       document.addEventListener('pointerdown', fermerSiDehors);
       document.addEventListener('keydown', fermerEchap);
 
-      const majBadge = () => { badge.textContent = nonLus; badge.classList.toggle('cache', !estReplie || !nonLus); };
-      panneau.querySelector('.chat-entete').onclick = () => {
-        estReplie = !estReplie;
-        panneau.classList.toggle('replie', estReplie);
-        try { localStorage.setItem(cleReplie, estReplie ? '1' : '0'); } catch { /* ignoré */ }
-        if (!estReplie) { nonLus = 0; liste.scrollTop = liste.scrollHeight; }
-        majBadge();
+      const majBadge = () => {
+        badge.textContent = nonLus > 99 ? '99+' : nonLus;
+        badge.classList.toggle('cache', estOuvert || !nonLus);
       };
+
+      // ---------- ouvert / replié ----------
+      let collerEnBas = true; // la liste était tout en bas : on l'y garde quand la hauteur change (clavier)
+      liste.addEventListener('scroll', () => { collerEnBas = liste.scrollHeight - liste.scrollTop - liste.clientHeight < 60; }, { passive: true });
+      const enBasDeListe = () => { liste.scrollTop = liste.scrollHeight; collerEnBas = true; };
+
+      /** Ouvre / ferme le chat. Renvoie une promesse résolue quand la fermeture est complète (historique compris). */
+      function ouvrir(o, { depuisHistorique = false } = {}) {
+        if (o === estOuvert) return Promise.resolve();
+        estOuvert = o;
+        panneau.dataset.etat = o ? 'ouvert' : 'replie';
+        dock.setAttribute('aria-expanded', String(o));
+        racine.classList.toggle('chat-ouvert', o);
+        if (o) {
+          nonLus = 0;
+          majViewport();
+          enBasDeListe();
+          // sur téléphone, pas de clavier surgissant quand on veut juste lire
+          if (!tactile()) input.focus();
+          // le bouton « retour » du téléphone referme le chat au lieu de quitter la page
+          try { history.pushState({ ...(history.state || {}), lwChat: true }, ''); } catch { /* ignoré */ }
+        } else {
+          ouvrirEmojis(false);
+          if (panneau.contains(document.activeElement)) document.activeElement.blur();
+          liste.querySelectorAll('.chat-msg.ouvert').forEach((x) => x.classList.remove('ouvert'));
+          dock.focus({ preventScroll: true });
+          if (!depuisHistorique && history.state?.lwChat) {
+            majBadge();
+            // On retire l'entrée d'historique ajoutée à l'ouverture. Le navigateur ne doit pas restaurer l'ancienne
+            // position de défilement à cette occasion (sinon il annulerait un recadrage fait juste après).
+            return new Promise((resolve) => {
+              const avant = history.scrollRestoration;
+              const fin = () => {
+                window.removeEventListener('popstate', fin);
+                clearTimeout(secours);
+                history.scrollRestoration = avant;
+                requestAnimationFrame(() => resolve());
+              };
+              const secours = setTimeout(fin, 500);
+              window.addEventListener('popstate', fin);
+              history.scrollRestoration = 'manual';
+              history.back();
+            });
+          }
+        }
+        majBadge();
+        return Promise.resolve();
+      }
+      dock.onclick = () => ouvrir(true);
+      panneau.querySelector('.chat-fermer').onclick = () => ouvrir(false);
+      const surRetour = () => { if (estOuvert) ouvrir(false, { depuisHistorique: true }); };
+      window.addEventListener('popstate', surRetour);
+
+      // ---------- clavier virtuel (iPhone) ----------
+      // Safari ne redimensionne pas la page quand le clavier s'ouvre : la feuille suit la zone visible
+      // (visualViewport) pour que le champ de saisie reste juste au-dessus du clavier.
+      const vv = window.visualViewport;
+      function majViewport() {
+        if (!vv) return;
+        racine.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
+        racine.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+        panneau.classList.toggle('clavier', window.innerHeight - vv.height > 120);
+        if (estOuvert && collerEnBas) liste.scrollTop = liste.scrollHeight;
+      }
+      vv?.addEventListener('resize', majViewport);
+      vv?.addEventListener('scroll', majViewport);
+
+      // ---------- espace réservé en bas de page ----------
+      const majHauteur = () => { if (dock.offsetHeight) racine.style.setProperty('--chat-h', `${dock.offsetHeight}px`); };
+      const observateur = typeof ResizeObserver === 'function' ? new ResizeObserver(majHauteur) : null;
+      observateur?.observe(dock);
+      majHauteur();
+
+      // ---------- les 2 derniers messages (bandeau replié) ----------
+      function majDerniers() {
+        const d = [...parId.values()].slice(-2);
+        derniers.innerHTML = d.length
+          ? d.map((m) => `<span class="chat-dernier"><b style="color:${COULEUR_RANG[m.auteur.rang] || '#9aa5b4'}">${echapper(m.auteur.pseudo)}</b> ${rendreTexte(m.texte).html}</span>`).join('')
+          : '<span class="chat-dernier vide">Aucun message. Touche ici pour écrire !</span>';
+      }
 
       const peutModerer = LW.peutOrganiser(moi);
       const estAdmin = LW.estAdmin(moi);
@@ -200,7 +294,8 @@
       function afficherTout(messages) {
         parId.clear();
         liste.innerHTML = messages.length ? messages.map(ligne).join('') : '<div class="vide petit chat-vide">Aucun message. Lance la conversation !</div>';
-        liste.scrollTop = liste.scrollHeight;
+        enBasDeListe();
+        majDerniers();
       }
 
       function ajouter(m) {
@@ -208,8 +303,9 @@
         const enBas = liste.scrollHeight - liste.scrollTop - liste.clientHeight < 60;
         liste.insertAdjacentHTML('beforeend', ligne(m));
         while (liste.children.length > 100) { parId.delete(liste.firstElementChild.dataset.id); liste.firstElementChild.remove(); }
-        if (enBas || m.auteur.id === String(moi.id)) liste.scrollTop = liste.scrollHeight;
-        if (estReplie && m.auteur.id !== String(moi.id)) { nonLus++; majBadge(); }
+        if (enBas || m.auteur.id === String(moi.id)) enBasDeListe();
+        if (!estOuvert && m.auteur.id !== String(moi.id)) { nonLus++; majBadge(); }
+        majDerniers();
       }
 
       function majMuet(ms) {
@@ -289,6 +385,7 @@
         if (c !== canal) return;
         liste.querySelector(`.chat-msg[data-id="${id}"]`)?.remove();
         parId.delete(id);
+        majDerniers();
         if (reponseA?.id === id) choisirReponse(null);
         liste.querySelectorAll(`.chat-citation[data-ref="${id}"] span`).forEach((x) => { x.innerHTML = '<i>message supprimé</i>'; });
       };
@@ -310,7 +407,11 @@
 
       async function rejoindre() {
         const rep = await LW.emettre('chat:rejoindre', { canal });
-        if (!rep.ok) { liste.innerHTML = `<div class="vide petit">${echapper(rep.erreur)}</div>`; return; }
+        if (!rep.ok) {
+          liste.innerHTML = `<div class="vide petit">${echapper(rep.erreur)}</div>`;
+          derniers.innerHTML = `<span class="chat-dernier vide">${echapper(rep.erreur)}</span>`;
+          return;
+        }
         afficherTout(rep.messages);
         majMuet(rep.muetMs);
       }
@@ -319,7 +420,17 @@
       majBadge();
 
       return {
+        ouvrir: () => ouvrir(true),
+        fermer: () => ouvrir(false), // promesse : résolue quand le chat est fermé et la page de nouveau défilable
+        estOuvert: () => estOuvert,
         detruire() {
+          ouvrir(false);
+          window.removeEventListener('popstate', surRetour);
+          vv?.removeEventListener('resize', majViewport);
+          vv?.removeEventListener('scroll', majViewport);
+          observateur?.disconnect();
+          racine.classList.remove('avec-chat', 'chat-ouvert');
+          racine.style.removeProperty('--chat-h');
           socket.off('chat:message', surMessage);
           socket.off('chat:supprime', surSuppression);
           socket.off('chat:reaction', surReaction);
