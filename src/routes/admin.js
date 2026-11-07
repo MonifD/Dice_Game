@@ -4,7 +4,7 @@ const prisma = require('../db/prisma');
 const perms = require('../services/permissions');
 const { profilPublic } = require('../services/authService');
 const { journaliser } = require('../services/journal');
-const { exigerConnexion, exigerAdmin, exigerSuperAdmin } = require('../middleware/auth');
+const { exigerConnexion, exigerAdmin, exigerDroitsSuperAdmin, exigerChangerRoles } = require('../middleware/auth');
 
 const RANGS = ['R1', 'R2', 'R3', 'R4', 'R5'];
 
@@ -32,6 +32,8 @@ module.exports = function routesAdmin(obtenirIo) {
         include: { _count: { select: { partiesGagnees: true, participations: true } } },
       });
       res.json({
+        // ce que l'utilisateur connecté peut proposer (affichage seulement : tout est revérifié à l'enregistrement)
+        droits: { rangs: perms.rangsPossibles(req.joueur), roles: perms.peutChangerRoles(req.joueur) },
         joueurs: joueurs.map((j) => ({
           ...profilPublic(j), derniereConnexion: j.derniereConnexion,
           victoires: j._count.partiesGagnees, parties: j._count.participations,
@@ -46,9 +48,23 @@ module.exports = function routesAdmin(obtenirIo) {
       const cible = await chargerCible(req, res); if (!cible) return;
       const rang = String(req.body?.rang);
       if (!RANGS.includes(rang)) return res.status(400).json({ erreur: 'Rang invalide.' });
-      const j = await prisma.joueur.update({ where: { id: cible.id }, data: { rang } });
+      // un admin qui descend R1 ou R2 perd le rôle admin (un R1 / R2 ne peut pas être admin)
+      const role = cible.role === 'ADMIN' && !perms.peutEtreAdmin(rang) ? 'JOUEUR' : cible.role;
+      const refus = perms.refusChangement(req.joueur, cible, { rang, role });
+      if (refus) return res.status(403).json({ erreur: refus });
+      // Un seul R5 (hors super admin) : donner R5 est une passation, l'ancien R5 redescend R4.
+      let anciens = [];
+      const j = await prisma.$transaction(async (tx) => {
+        if (rang === 'R5' && cible.rang !== 'R5') {
+          anciens = await tx.joueur.findMany({ where: { rang: 'R5', role: { not: 'SUPER_ADMIN' }, id: { not: cible.id } }, select: { id: true, pseudo: true } });
+          if (anciens.length) await tx.joueur.updateMany({ where: { id: { in: anciens.map((a) => a.id) } }, data: { rang: 'R4' } });
+        }
+        return tx.joueur.update({ where: { id: cible.id }, data: { rang, role } });
+      });
       await journaliser(req.joueur.id, 'rang', { joueur: cible.pseudo, de: cible.rang, a: rang });
-      res.json({ joueur: profilPublic(j) });
+      if (role !== cible.role) await journaliser(req.joueur.id, 'role', { joueur: cible.pseudo, de: cible.role, a: role, raison: `rang ${rang}` });
+      for (const a of anciens) await journaliser(req.joueur.id, 'passation_r5', { joueur: a.pseudo, de: 'R5', a: 'R4', nouveauR5: cible.pseudo });
+      res.json({ joueur: profilPublic(j), anciensR5: anciens.map((a) => a.pseudo) });
     } catch (e) { next(e); }
   });
 
@@ -96,12 +112,14 @@ module.exports = function routesAdmin(obtenirIo) {
     } catch (e) { next(e); }
   });
 
-  /** Nommer / retirer un admin : super admin uniquement. */
-  router.patch('/joueurs/:id/role', exigerSuperAdmin, async (req, res, next) => {
+  /** Nommer / retirer un admin : R4 admin, R5 et super admin (sur des comptes de niveau inférieur). */
+  router.patch('/joueurs/:id/role', exigerChangerRoles, async (req, res, next) => {
     try {
       const cible = await chargerCible(req, res); if (!cible) return;
       const role = String(req.body?.role);
       if (!['JOUEUR', 'ADMIN'].includes(role)) return res.status(400).json({ erreur: 'Rôle invalide.' });
+      const refus = perms.refusChangement(req.joueur, cible, { role });
+      if (refus) return res.status(refus.startsWith('Un R1') ? 400 : 403).json({ erreur: refus });
       const j = await prisma.joueur.update({ where: { id: cible.id }, data: { role } });
       await journaliser(req.joueur.id, 'role', { joueur: cible.pseudo, de: cible.role, a: role });
       res.json({ joueur: profilPublic(j) });
@@ -133,9 +151,9 @@ module.exports = function routesAdmin(obtenirIo) {
     try { await prisma.questionQuiz.delete({ where: { id: Number(req.params.id) } }); res.json({ ok: true }); } catch (e) { next(e); }
   });
 
-  // ---------------- journaux (super admin)
+  // ---------------- journaux (super admin et R5)
 
-  router.get('/journaux', exigerSuperAdmin, async (req, res, next) => {
+  router.get('/journaux', exigerDroitsSuperAdmin, async (req, res, next) => {
     try {
       const journaux = await prisma.journal.findMany({ orderBy: { date: 'desc' }, take: 300 });
       const auteurs = await prisma.joueur.findMany({

@@ -74,15 +74,20 @@ last_war/
 
 ## Rôles et droits (vérifiés côté serveur : `src/services/permissions.js`)
 
-| | R1–R3 | R4–R5 | Admin | Super admin |
-|---|:-:|:-:|:-:|:-:|
-| Jouer, regarder | ✅ | ✅ | ✅ | ✅ |
-| Créer / lancer / faire avancer / arrêter une partie | | ✅ | ✅ | ✅ |
-| Rangs, bloquer, supprimer, mot de passe oublié, questions du quiz | | | ✅ | ✅ |
-| Nommer des admins, journaux | | | | ✅ |
+| | R1–R3 | R4 | Admin | R4 admin | R5 (un seul) | Super admin |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| Jouer, regarder | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Créer / lancer / faire avancer / arrêter une partie | | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Rangs R1–R4, bloquer, supprimer, mot de passe oublié, quiz, muet | | | ✅ | ✅ | ✅ | ✅ |
+| Nommer / retirer des admins | | | | ✅ | ✅ | ✅ |
+| Donner le rang R5, journaux | | | | | ✅ | ✅ |
 
-Un admin ne peut pas modifier un autre admin ; personne ne peut modifier le super admin ni son propre compte
-depuis l'administration. Un compte bloqué est déconnecté immédiatement.
+Niveaux : super admin (4) > R5 (3, admin ou non) > R4 admin (2) > admin (1) > joueurs (0).
+On ne modifie que les comptes d'un niveau **strictement inférieur** au sien, jamais le sien, et on ne peut pas
+donner un niveau supérieur au sien. Personne ne peut modifier le super admin. **Un R1 ou un R2 ne peut pas être admin**
+(un admin descendu R1/R2 perd le rôle). **Un seul R5** (hors super admin) :
+donner R5 est une passation, l'ancien R5 redescend R4 (journal `passation_r5`). Un compte bloqué est déconnecté
+immédiatement.
 
 ## Échanges Socket.IO
 

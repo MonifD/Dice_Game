@@ -42,8 +42,8 @@ async function preparerComptes() {
     }));
   }
   const org = await prisma.joueur.upsert({
-    where: { pseudoNormalise: 'botorganisateur' }, update: { rang: 'R5', actif: true },
-    create: { pseudo: 'BotOrganisateur', pseudoNormalise: 'botorganisateur', motDePasseHash: hash, rang: 'R5' },
+    where: { pseudoNormalise: 'botorganisateur' }, update: { rang: 'R4', actif: true },
+    create: { pseudo: 'BotOrganisateur', pseudoNormalise: 'botorganisateur', motDePasseHash: hash, rang: 'R4' },
   });
   return { bots, org };
 }
