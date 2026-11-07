@@ -39,6 +39,26 @@
     const o = LW.objets[objet];
     return o ? `<span class="badge objet ${o.cls}">${o.icone} ${long ? o.long : o.court}${date ? ` le ${LW.jour(date)}` : ''}</span>` : '';
   };
+  /**
+   * Liste des joueurs en ligne (pastille verte), mise à jour en direct par le serveur (presence:maj).
+   * « En ligne » = une page avec connexion temps réel ouverte (accueil ou salle).
+   */
+  LW.afficherConnectes = async (conteneur) => {
+    const couleur = { R5: '#ffc35a', R4: '#f5a524', R3: '#8cc2ff' };
+    const rendre = (joueurs = []) => {
+      conteneur.innerHTML = `<h3 class="en-ligne-titre"><span class="pastille-verte"></span>En ligne <span class="badge vert">${joueurs.length}</span></h3>
+        <div class="liste-en-ligne">${joueurs.map((j) => `<span class="connecte ${j.id === String(LW.moi?.id) ? 'moi' : ''}">
+          <span class="pastille-verte"></span><b style="color:${couleur[j.rang] || 'var(--texte)'}">${LW.echapper(j.pseudo)}</b>${LW.rangVisible(j.rang) ? `<span class="chat-rang">${j.rang}</span>` : ''}${j.role === 'ADMIN' || j.role === 'SUPER_ADMIN' ? '<span class="chat-role">admin</span>' : ''}</span>`).join('')
+          || '<span class="muet petit">Personne en ligne.</span>'}</div>`;
+    };
+    rendre();
+    const socket = await LW.socket();
+    socket.on('presence:maj', ({ joueurs }) => rendre(joueurs));
+    const suivre = async () => { const r = await LW.emettre('presence:suivre'); if (r.ok) rendre(r.joueurs); };
+    socket.on('connect', suivre); // reconnexion : on se réabonne
+    if (socket.connected) await suivre();
+  };
+
   /** Cartes « Conducteur actuel / VIP actuel » (dernier gagnant de chaque type). */
   LW.afficherDesignations = async (conteneur) => {
     try {
