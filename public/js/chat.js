@@ -60,7 +60,7 @@
                 <span class="badge or cache chat-non-lus">0</span>
                 <span class="chat-fleche" aria-hidden="true">▴</span>
               </span>
-              <span class="chat-derniers"><span class="chat-dernier vide">Chargement…</span></span>
+              <span class="chat-derniers"><span class="chat-dernier aucun">Chargement…</span></span>
             </span>
           </button>
           <div class="chat-feuille" role="dialog" aria-label="${echapper(titre)}">
@@ -235,7 +235,7 @@
         const d = [...parId.values()].slice(-2);
         derniers.innerHTML = d.length
           ? d.map((m) => `<span class="chat-dernier"><b style="color:${COULEUR_RANG[m.auteur.rang] || '#9aa5b4'}">${echapper(m.auteur.pseudo)}</b> ${rendreTexte(m.texte).html}</span>`).join('')
-          : '<span class="chat-dernier vide">Aucun message. Touche ici pour écrire !</span>';
+          : '<span class="chat-dernier aucun">Aucun message. Touche ici pour écrire !</span>';
       }
 
       const peutModerer = LW.peutOrganiser(moi);
@@ -409,7 +409,7 @@
         const rep = await LW.emettre('chat:rejoindre', { canal });
         if (!rep.ok) {
           liste.innerHTML = `<div class="vide petit">${echapper(rep.erreur)}</div>`;
-          derniers.innerHTML = `<span class="chat-dernier vide">${echapper(rep.erreur)}</span>`;
+          derniers.innerHTML = `<span class="chat-dernier aucun">${echapper(rep.erreur)}</span>`;
           return;
         }
         afficherTout(rep.messages);

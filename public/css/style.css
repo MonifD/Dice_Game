@@ -241,7 +241,7 @@ html.chat-ouvert #toasts { bottom: auto; top: calc(16px + env(safe-area-inset-to
 .chat-dernier { display: block; font-size: .88rem; line-height: 1.4; min-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--texte); }
 .chat-dernier b { margin-right: 4px; }
 .chat-dernier .emoji { width: 1.3em; height: 1.3em; vertical-align: -.3em; object-fit: contain; }
-.chat-dernier.vide { color: var(--texte-3); }
+.chat-dernier.aucun { color: var(--texte-3); }
 .chat-feuille { display: none; }
 .chat[data-etat="ouvert"] .chat-dock { display: none; }
 .chat[data-etat="ouvert"] .chat-feuille {
@@ -533,3 +533,13 @@ html.chat-ouvert #toasts { bottom: auto; top: calc(16px + env(safe-area-inset-to
   .designation .nom { grid-column: 1 / -1; font-size: 1rem; }
   .designation .nom.muet { font-size: .85rem; font-family: var(--corps); font-weight: 500; }
 }
+
+/* ---------- joueurs en ligne (accueil) ---------- */
+.en-ligne-titre { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.en-ligne-titre .badge { font-family: var(--corps); }
+.liste-en-ligne { display: flex; flex-wrap: wrap; gap: 6px; }
+.connecte { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--bord); background: var(--panneau-2); font-size: .88rem; }
+.connecte b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; font-weight: 600; }
+.connecte.moi { border-color: rgba(245, 165, 36, .4); background: var(--accent-fond); }
+.pastille-verte { width: 8px; height: 8px; border-radius: 50%; background: var(--vert); flex: none; box-shadow: 0 0 0 3px var(--vert-fond); }
+.connecte .chat-rang, .connecte .chat-role { flex: none; }

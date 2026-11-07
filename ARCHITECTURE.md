@@ -114,6 +114,8 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `chat:reagir` | `{ canal, id, emoji }` | tous (sauf muets) | réaction ❤ (`62`) ou 🎉 (`74`) ; un 2e clic la retire ; 15 / 10 s max |
 | `chat:supprimer` | `{ canal, id }` | auteur, R4/R5/admin | supprime un message |
 | `chat:muet` | `{ joueurId, minutes }` | admin | rend muet (0 = lever) |
+| `presence:suivre` | – | tous | renvoie `{ joueurs }` connectés puis reçoit `presence:maj` (bloc « En ligne » de l'accueil) |
+| `presence:quitter` | – | tous | ne plus recevoir `presence:maj` |
 
 | Serveur → client | Données |
 |---|---|
@@ -128,6 +130,7 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `chat:reaction` | `{ canal, id, reactions: { '62': [{ id, pseudo }], '74': [...] } }` — toutes les réactions du message après le changement |
 | `chat:supprime` | `{ canal, id }` |
 | `chat:muet` | `{ muetMs }` — envoyé au joueur sanctionné |
+| `presence:maj` | `{ joueurs: [{ id, pseudo, rang, role }] }` — joueurs connectés, triés par rang (au plus toutes les 1,5 s) |
 
 ### Chat
 
@@ -143,6 +146,13 @@ et `public/js/chat.js` (widget réutilisable `LW.chat.monter(conteneur, canal)`)
 - **Réactions** : hash Redis `chat:reac:<canal>`, champ `<idMessage>:<emoji>:<idJoueur>` = pseudo (une écriture
   atomique par réaction, pas de conflit entre joueurs). Les réactions des messages disparus sont nettoyées
   au chargement de l'historique.
+
+### Joueurs en ligne
+
+Bloc « 🟢 En ligne » en bas de l'accueil (`LW.afficherConnectes`, `public/js/commun.js`), hors chat. La liste est
+calculée à la demande avec `io.fetchSockets()` (toutes instances via l'adaptateur Redis, rien à stocker) et envoyée
+à jour (`presence:maj`, au plus toutes les 1,5 s) ; un joueur avec plusieurs onglets compte une fois.
+« En ligne » = une page avec connexion temps réel ouverte (accueil ou salle).
 
 ## Le moteur de partie (`src/moteur/moteur.js`)
 

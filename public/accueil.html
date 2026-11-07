@@ -51,6 +51,8 @@
         </section>
       </aside>
     </div>
+    <!-- joueurs en ligne : en bas de la page, sur téléphone comme sur ordinateur -->
+    <section class="panneau" id="en-ligne" style="margin-top:16px"></section>
   </main>
   <style>@media (max-width: 860px) { #grille-accueil { grid-template-columns: 1fr !important; } }</style>
   <script src="/js/commun.js"></script>
@@ -96,6 +98,7 @@
       };
 
       await Promise.all([chargerSalles(), chargerStats(), LW.afficherDesignations($('#designations'))]);
+      LW.afficherConnectes($('#en-ligne'));
       LW.chat.monter(document.body, 'general', { titre: '💬 Chat de l\'alliance' });
       // Mises à jour en direct de la liste
       const socket = await LW.socket();

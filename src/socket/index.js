@@ -21,10 +21,13 @@
  *   chat:reagir      { canal, id, emoji }          emoji 62 (❤) ou 74 (🎉) ; 2e clic = retirer
  *   chat:supprimer   { canal, id }       auteur, R4/R5/admins
  *   chat:muet        { joueurId, minutes } admins (0 = lever la sanction)
+ *   presence:suivre  {}                  -> { joueurs } connectés, puis presence:maj à chaque arrivée / départ
+ *   presence:quitter {}
  *
  * Serveur -> client :
  *   salle:etat, salle:inscription, salle:desinscription, salle:pret, salle:alerte, jeu:aAgi, jeu:evenement, salles:maj,
  *   chat:message, chat:supprime, chat:muet, chat:reaction { canal, id, reactions }
+ *   presence:maj { joueurs: [{ id, pseudo, rang, role }] }
  */
 const { Server } = require('socket.io');
 const cookie = require('cookie');
@@ -64,6 +67,9 @@ function gestionnaire(socket, fn) {
   };
 }
 
+/** Rangs du plus haut au plus bas (tri de la liste des connectés). */
+const ORDRE_RANG = { R5: 0, R4: 1, R3: 2, R2: 3, R1: 4 };
+
 function creerServeurSocket(httpServer) {
   const io = new Server(httpServer, {
     path: config.socketPath,
@@ -95,9 +101,35 @@ function creerServeurSocket(httpServer) {
     } catch (e) { next(e); }
   });
 
+  // ------------------------------------------------------------ joueurs connectés
+  // Calculés à partir des connexions ouvertes (toutes instances confondues grâce à l'adaptateur Redis) :
+  // rien à stocker ni à nettoyer si une instance s'arrête. Un joueur avec plusieurs onglets n'apparaît qu'une fois.
+  async function joueursConnectes() {
+    const sockets = await io.fetchSockets();
+    const parId = new Map();
+    for (const s of sockets) if (s.data?.joueur) parId.set(s.data.joueur.id, s.data.joueur);
+    return [...parId.values()]
+      .map(({ id, pseudo, rang, role }) => ({ id, pseudo, rang, role }))
+      .sort((a, b) => (ORDRE_RANG[a.rang] ?? 9) - (ORDRE_RANG[b.rang] ?? 9) || a.pseudo.localeCompare(b.pseudo, 'fr'));
+  }
+  // Arrivées / départs regroupés : une seule mise à jour toutes les 1,5 s au plus.
+  let minuteurPresence = null;
+  function signalerPresence() {
+    if (minuteurPresence) return;
+    minuteurPresence = setTimeout(async () => {
+      minuteurPresence = null;
+      try { io.to('presence').emit('presence:maj', { joueurs: await joueursConnectes() }); } catch (e) { console.error('[presence]', e); }
+    }, 1500);
+    minuteurPresence.unref?.();
+  }
+
   io.on('connection', (socket) => {
     const moi = socket.data.joueur;
     socket.join(`joueur:${moi.id}`); // permet de déconnecter un compte bloqué
+    signalerPresence();
+    socket.on('disconnect', signalerPresence);
+    socket.on('presence:suivre', gestionnaire(socket, async () => { socket.join('presence'); return { joueurs: await joueursConnectes() }; }));
+    socket.on('presence:quitter', gestionnaire(socket, async () => { socket.leave('presence'); }));
 
     socket.on('accueil:suivre', gestionnaire(socket, async () => { socket.join('accueil'); }));
 
