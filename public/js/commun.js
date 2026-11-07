@@ -45,10 +45,14 @@
       const { designations, aujourdhui } = await LW.api('/api/designations');
       conteneur.innerHTML = `<div class="designations">${Object.entries(LW.objets).map(([cle, o]) => {
         const d = designations[cle];
+        const auj = d && d.dateObjet === aujourdhui;
+        // sur téléphone, seuls le logo, la date (ou le nom court) et le pseudo restent visibles (voir style.css)
+        const quand = d ? `<span class="sep"> · ${auj ? '' : 'le '}</span><span class="quand">${auj ? 'aujourd\'hui' : LW.jour(d.dateObjet)}</span>`
+          : `<span class="quand seul">${o.court}</span>`;
         return `<div class="designation ${o.cls}">
           <div class="ic">${o.icone}</div>
-          <div class="txt"><div class="titre">${o.long}${d ? ` · ${d.dateObjet === aujourdhui ? 'aujourd\'hui' : `le ${LW.jour(d.dateObjet)}`}` : ''}</div>
-            ${d ? `<div class="nom">${LW.echapper(d.gagnant.pseudo)}</div><div class="muet petit">gagné au ${d.icone} ${LW.echapper(d.miniJeu)}</div>`
+          <div class="txt"><div class="titre"><span class="lib">${o.long}</span>${quand}</div>
+            ${d ? `<div class="nom">${LW.echapper(d.gagnant.pseudo)}</div><div class="muet petit gagne">gagné au ${d.icone} ${LW.echapper(d.miniJeu)}</div>`
               : '<div class="nom muet">Personne pour l\'instant</div>'}
           </div></div>`;
       }).join('')}</div>`;

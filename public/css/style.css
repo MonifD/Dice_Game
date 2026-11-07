@@ -148,6 +148,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 /* ---------- salle de jeu ---------- */
 .salle { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
 @media (max-width: 860px) { .salle { grid-template-columns: 1fr; } }
+.salle > * { min-width: 0; } /* sinon une grille de choix élargit la colonne et la page déborde sur téléphone */
 .scene { min-height: 380px; position: relative; overflow: hidden; }
 .entete-salle { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .entete-salle .icone { font-size: 34px; }
@@ -213,14 +214,61 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .barre-res.perd .jauge > div { background: var(--rouge); }
 
 /* ---------- chat ---------- */
-.chat { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
-.chat-entete { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 12px 16px; font: 700 1rem var(--titre); border-bottom: 1px solid var(--bord); }
-.chat-entete .chat-fleche { margin-left: auto; color: var(--texte-3); transition: transform .2s; }
-.chat.replie .chat-fleche { transform: rotate(-90deg); }
-.chat.replie .chat-corps { display: none; }
-.chat.replie .chat-entete { border-bottom: none; }
-.chat-corps { display: flex; flex-direction: column; }
-.chat-messages { height: 320px; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; overscroll-behavior: contain; }
+/* Le chat est fixé en bas de l'écran (mobile d'abord).
+ * Replié : bandeau pleine largeur avec les 2 derniers messages ; sa hauteur est publiée dans --chat-h par chat.js.
+ * Ouvert : plein écran sur téléphone (suit la zone visible quand le clavier est ouvert : --vv-top / --vv-h),
+ *          feuille en bas de l'écran sur ordinateur. */
+html.avec-chat body { padding-bottom: var(--chat-h, 0px); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+html.avec-chat #toasts { bottom: calc(16px + var(--chat-h, 0px)); }
+html.chat-ouvert #toasts { bottom: auto; top: calc(16px + env(safe-area-inset-top)); }
+.chat {
+  --chat-marge: max(12px, calc((100% - 1100px) / 2)); /* contenu aligné sur .page sur grand écran */
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+}
+.chat-dock {
+  all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+  background: rgba(23, 28, 35, .96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid var(--bord); box-shadow: 0 -8px 24px rgba(0, 0, 0, .35);
+  padding: 8px max(var(--chat-marge), env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(var(--chat-marge), env(safe-area-inset-left));
+}
+.chat-dock:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-dock:active { background: rgba(30, 36, 45, .98); }
+.chat-dock-int { display: block; min-width: 0; }
+.chat-dock-titre { display: flex; align-items: center; gap: 8px; font: 700 .82rem var(--titre); color: var(--texte-2); margin-bottom: 4px; }
+.chat-fleche { margin-left: auto; color: var(--texte-3); font-size: .9rem; }
+.chat-derniers { display: flex; flex-direction: column; gap: 2px; }
+.chat-dernier { display: block; font-size: .88rem; line-height: 1.4; min-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--texte); }
+.chat-dernier b { margin-right: 4px; }
+.chat-dernier .emoji { width: 1.3em; height: 1.3em; vertical-align: -.3em; object-fit: contain; }
+.chat-dernier.vide { color: var(--texte-3); }
+.chat-feuille { display: none; }
+.chat[data-etat="ouvert"] .chat-dock { display: none; }
+.chat[data-etat="ouvert"] .chat-feuille {
+  display: flex; flex-direction: column; position: fixed; left: 0; right: 0;
+  top: var(--vv-top, 0px); height: 100vh; height: var(--vv-h, 100dvh);
+  background: var(--panneau); animation: chat-monte .2s ease-out;
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+}
+@keyframes chat-monte { from { transform: translateY(24px); opacity: 0; } }
+.chat-entete {
+  flex: none; display: flex; align-items: center; gap: 8px; font: 700 1rem var(--titre);
+  padding: max(10px, env(safe-area-inset-top)) 8px 10px 16px; border-bottom: 1px solid var(--bord);
+}
+.chat-fermer { margin-left: auto; min-width: 44px; min-height: 44px; display: grid; place-items: center; background: none; border: none; border-radius: 10px; color: var(--texte-2); font-size: 1.15rem; cursor: pointer; }
+.chat-fermer:hover { color: var(--texte); background: var(--panneau-2); }
+.chat-corps { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* le défilement de la page derrière le chat ouvert est bloqué sur téléphone */
+@media (max-width: 859px) { html.chat-ouvert, html.chat-ouvert body { overflow: hidden; } }
+@media (min-width: 860px) {
+  .chat[data-etat="ouvert"] .chat-feuille {
+    top: auto; bottom: 0; height: min(70vh, 640px);
+    padding-left: var(--chat-marge); padding-right: var(--chat-marge);
+    border-top: 1px solid var(--bord); border-radius: 14px 14px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, .45);
+  }
+  .chat[data-etat="ouvert"] .chat-entete { padding-top: 10px; }
+}
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; overscroll-behavior: contain; }
 .chat-msg { padding: 6px 8px; border-radius: 8px; background: var(--fond-2); animation: monte .15s; }
 .chat-msg.moi { background: rgba(245, 165, 36, .08); }
 .chat-msg.mention { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-fond); }
@@ -268,7 +316,9 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .chat-reponse-annuler:hover { color: var(--texte); background: var(--panneau-2); }
 .chat-reponse:not(.cache) ~ .chat-apercu, .chat-reponse:not(.cache) ~ .chat-form { border-top: none; }
 .chat-texte { font-size: .92rem; overflow-wrap: anywhere; white-space: pre-wrap; }
-.chat-form { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--bord); }
+.chat-form { flex: none; display: flex; gap: 6px; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--bord); }
+.chat.clavier .chat-form { padding-bottom: 10px; } /* clavier ouvert : pas de marge pour la barre d'accueil de l'iPhone */
+.chat-form input { font-size: 16px; } /* < 16 px, Safari zoome la page quand on touche le champ */
 .chat-form input { padding: 9px 10px; }
 .chat-muet { padding: 8px 12px; font-size: .85rem; color: #ff9a9a; background: var(--rouge-fond); }
 /* emojis Last War */
@@ -280,7 +330,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .chat-btn-emoji:hover, .chat-btn-emoji.actif { background: var(--panneau-2); border-color: var(--accent); }
 .chat-btn-emoji:disabled { opacity: .4; cursor: not-allowed; }
 .chat-btn-emoji .emoji-btn { width: 26px; height: 26px; }
-.chat-emojis { border-top: 1px solid var(--bord); background: var(--fond-2); max-height: 230px; overflow-y: auto; padding: 8px 10px 10px; overscroll-behavior: contain; animation: monte .15s; }
+.chat-emojis { border-top: 1px solid var(--bord); background: var(--fond-2); flex: none; max-height: min(230px, 40%); overflow-y: auto; padding: 8px 10px 10px; overscroll-behavior: contain; animation: monte .15s; }
 .chat-emojis-titre { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--texte-3); margin: 4px 2px 6px; }
 /* 7 par ligne, comme dans le jeu : chaque planche de 21 tombe pile sur 3 lignes */
 .chat-emojis-grille { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
@@ -353,6 +403,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .designation .titre { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--texte-2); }
 .designation .nom { font-family: var(--titre); font-size: 1.35rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .designation .txt { min-width: 0; }
+.designation .quand.seul { display: none; } /* nom court : téléphone uniquement */
 .choix-objet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .choix-objet label { cursor: pointer; margin: 0; }
 .choix-objet input { position: absolute; opacity: 0; pointer-events: none; }
@@ -420,9 +471,6 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   /* onglets (admin, historique) : sur plusieurs lignes plutôt que coupés */
   .onglets { flex-wrap: wrap; overflow: visible; }
   .onglets button { padding: 8px 10px; font-size: .88rem; }
-  .panneau.chat { padding: 0; }
-  .chat-messages { height: 240px; }
-  .chat-emojis { max-height: 200px; }
   .regles { padding: 12px; }
   .regles ol { padding-left: 18px; }
   .consigne { font-size: 1.05rem; }
@@ -443,5 +491,45 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .pagination #pagination { grid-column: 1 / -1; order: -1; text-align: center; }
 }
 
+/* pendant un tour : la scène remplit l'écran entre la barre du haut et le chat (hauteur et zoom calculés par salle.js) */
+.scene.ajustee { display: flex; flex-direction: column; height: var(--scene-h); min-height: 0; }
+.scene.ajustee > * { flex: none; }
+.scene.ajustee > .fil { flex: 1 1 0; min-height: 0; max-height: none; }
 /* la zone de jeu ne passe pas sous la barre du haut (fixe) quand on y remonte automatiquement */
 #scene { scroll-margin-top: 76px; }
+
+/* ================= téléphone : affichage plus compact ================= */
+/* Le chat occupe le bas de l'écran : on réduit l'ensemble pour que le jeu reste visible. */
+@media (max-width: 560px) {
+  html { font-size: 14px; } /* toutes les tailles en rem diminuent d'environ 12 % */
+  body { font-size: 14px; line-height: 1.45; }
+  .barre { padding: 8px 12px; }
+  .page { padding: 10px 10px 32px; }
+  .panneau { padding: 12px; }
+  .btn { padding: 9px 14px; }
+  .btn.geant { font-size: 1.1rem; padding: 14px 22px; min-height: 54px; }
+  .scene { min-height: 300px; }
+  .zone-jeu { min-height: 160px; gap: 12px; }
+  .consigne { margin: 10px 0; }
+  .choix-grille { gap: 8px; }
+  .choix-grille .btn { min-height: 72px; }
+  .chiffre { font-size: 1.8rem; }
+  .gagnant { padding: 20px 8px; }
+  .gagnant .trophee { font-size: 68px; }
+  /* chat replié moins haut */
+  .chat-dock { padding-top: 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .chat-dock-titre { font-size: .75rem; margin-bottom: 2px; }
+  .chat-dernier { font-size: .85rem; line-height: 1.35; }
+  /* Conducteur / VIP : côte à côte, logo + date sur une ligne, pseudo en dessous */
+  .designations { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .designation { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; padding: 8px 10px; border-radius: 12px; }
+  .designation .ic { width: 30px; height: 30px; font-size: 18px; border-radius: 8px; }
+  .designation .txt { display: contents; }
+  .designation .titre { font-size: .8rem; letter-spacing: .02em; text-transform: none; font-weight: 600; }
+  .designation .titre .lib, .designation .titre .sep, .designation .gagne { display: none; }
+  .designation .quand.seul { display: inline; }
+  .designation.conducteur .quand { color: var(--accent-2); }
+  .designation.vip .quand { color: #c9a6ff; }
+  .designation .nom { grid-column: 1 / -1; font-size: 1rem; }
+  .designation .nom.muet { font-size: .85rem; font-family: var(--corps); font-weight: 500; }
+}

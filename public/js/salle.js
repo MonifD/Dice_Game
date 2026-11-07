@@ -60,8 +60,8 @@
   socket.on('disconnect', () => majPastille(false));
   if (socket.connected) { majPastille(true); observer(); }
 
-  // Chat de la salle (joueurs, éliminés et spectateurs). Replié par défaut sur téléphone.
-  LW.chat.monter($('#chat'), `salle:${code}`, { titre: '💬 Chat de la salle', replie: window.innerWidth < 860 });
+  // Chat de la salle (joueurs, éliminés et spectateurs), fixé en bas de l'écran, replié au départ.
+  const chat = LW.chat.monter(document.body, `salle:${code}`, { titre: '💬 Chat de la salle' });
 
   socket.on('salle:etat', (e) => { if (e?.code === code) recevoirEtat(e); });
   socket.on('salle:inscription', ({ id, pseudo }) => {
@@ -149,15 +149,76 @@
     rendre();
     // Nouveau tour (lancement ou « Tour suivant ») : on ramène la zone de jeu à l'écran si elle n'y est pas
     // (ex. organisateur resté sur son panneau en bas, joueur parti lire le chat sur téléphone).
-    if (!premier && etat.phase === 'tour' && ancienne !== 'tour') ramenerSurLeJeu();
+    if (!premier && etat.phase === 'tour' && ancienne !== 'tour') {
+      // Un joueur encore en jeu ne doit pas rater son coup parce qu'il lisait le chat : on le ferme, puis on
+      // recadre le jeu une fois la fermeture terminée (avant, la page est bloquée sous le chat et ne défile pas).
+      const fermeture = monJoueur()?.statut === 'enJeu' ? chat.then((c) => c?.fermer()) : Promise.resolve();
+      fermeture.catch(() => {}).then(ramenerSurLeJeu);
+    }
   }
 
+  /** Place la zone de jeu juste sous la barre du haut : avec ajusterScene(), elle remplit l'écran jusqu'au chat. */
   function ramenerSurLeJeu() {
+    ajusterScene();
     const scene = $('#scene');
-    const r = scene.getBoundingClientRect();
     const hautBarre = document.querySelector('.barre')?.offsetHeight || 0;
-    if (r.top < hautBarre || r.top > window.innerHeight * 0.6) scene.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const cible = window.scrollY + scene.getBoundingClientRect().top - hautBarre - MARGE_SCENE;
+    window.scrollTo({ top: Math.max(0, cible), behavior: 'smooth' });
   }
+
+  // ------------------------------------------------------------ zone de jeu ajustée à l'écran
+  // Pendant un tour, la scène prend exactement la hauteur visible entre la barre du haut et le chat replié,
+  // pour que le joueur n'ait pas à faire défiler la page. Si le jeu (en-tête, chrono, consigne, zone de jeu)
+  // ne tient pas, toute la scène est réduite avec CSS zoom (jusqu'à 55 %). Le fil « En direct » prend la place
+  // restante et défile à l'intérieur.
+  const MARGE_SCENE = 8;
+  const ZOOM_MIN = 0.55;
+  let ajustementPrevu = false;
+  function demanderAjustement() {
+    if (ajustementPrevu) return;
+    ajustementPrevu = true;
+    requestAnimationFrame(() => { ajustementPrevu = false; ajusterScene(); });
+  }
+  function ajusterScene() {
+    const scene = $('#scene');
+    const zone = $('#zone-jeu', scene);
+    if (etat?.phase !== 'tour' || !zone) {
+      if (scene.classList.contains('ajustee')) { scene.classList.remove('ajustee'); scene.style.zoom = ''; scene.style.removeProperty('--scene-h'); }
+      return;
+    }
+    const racine = getComputedStyle(document.documentElement);
+    const hautChat = parseFloat(racine.getPropertyValue('--chat-h')) || 0;
+    const hautBarre = document.querySelector('.barre')?.offsetHeight || 0;
+    const visible = window.visualViewport?.height || window.innerHeight;
+    const dispo = Math.max(240, visible - hautBarre - hautChat - 2 * MARGE_SCENE);
+    // Hauteur utile à l'écran (sans le fil) pour un zoom donné. Elle dépend du zoom lui-même : une scène réduite
+    // a plus de place en largeur, une grille de choix peut alors passer sur plus de colonnes. On cherche donc le
+    // plus grand zoom qui tient par dichotomie ; les essais intermédiaires sont faits dans la même image
+    // (jamais affichés) et ne relancent pas le ResizeObserver, qui ne compare que l'état final.
+    const pad = parseFloat(getComputedStyle(scene).paddingBottom) || 0;
+    const essayer = (z) => {
+      scene.style.zoom = z === 1 ? '' : z.toFixed(3);
+      scene.style.setProperty('--scene-h', `${Math.floor(dispo / z)}px`);
+      return zone.getBoundingClientRect().bottom - scene.getBoundingClientRect().top + pad * z <= dispo + 1;
+    };
+    scene.classList.add('ajustee');
+    const actuel = parseFloat(scene.style.zoom) || 1;
+    // cas courant (appel à chaque rendu) : le zoom actuel tient et un zoom un peu plus grand ne tiendrait pas
+    if (essayer(actuel) && (actuel === 1 || !essayer(Math.min(1, actuel + 0.03)))) { essayer(actuel); return; }
+    if (essayer(1)) return;
+    let bas = ZOOM_MIN;
+    let haut = 1;
+    for (let k = 0; k < 7; k++) {
+      const milieu = (bas + haut) / 2;
+      if (essayer(milieu)) bas = milieu; else haut = milieu;
+    }
+    // même au zoom minimum le jeu ne tient pas : on garde ce zoom mais sans hauteur imposée (rien n'est coupé,
+    // la page défile comme avant)
+    if (!essayer(bas)) { scene.classList.remove('ajustee'); scene.style.removeProperty('--scene-h'); }
+  }
+  const observateurZone = typeof ResizeObserver === 'function' ? new ResizeObserver(demanderAjustement) : null;
+  window.addEventListener('resize', demanderAjustement);
+  window.visualViewport?.addEventListener('resize', demanderAjustement);
 
   // ------------------------------------------------------------ rendu
   function rendre() {
@@ -176,6 +237,7 @@
     rendreJoueurs();
     rendreOrga();
     rendreScene();
+    demanderAjustement();
   }
 
   /** Interrupteur « Prêt » en haut du cadre du salon (le cadre est redessiné : délégation). */
@@ -404,6 +466,8 @@
         <div class="zone-jeu ${spectateur ? 'spectateur' : ''}" id="zone-jeu"></div>
         <h3 style="margin-top:10px" class="${etat.jeuActif.actionRequise ? '' : 'cache'}">En direct</h3>
         <div class="fil" id="fil"></div>`;
+      observateurZone?.disconnect();
+      observateurZone?.observe($('#zone-jeu'));
       try { moduleMonte.monter?.($('#zone-jeu'), ctx); } catch (e) { console.error(e); $('#zone-jeu').textContent = 'Erreur d\'affichage du mini-jeu.'; }
       // fil des actions déjà faites (reconnexion)
       for (const a of tc.actions) ajouterAuFil({ ...a, pseudo: pseudo(a.joueurId) });
@@ -423,6 +487,7 @@
     // le rappel « joue sinon tu es éliminé » disparaît dès que j'ai joué
     const aJoue = tc.actions.some((a) => a.joueurId === String(moi.id) && a.fini);
     $('#rappel-absent')?.classList.toggle('cache', aJoue);
+    demanderAjustement();
   }
 
   function demarrerChrono() {
