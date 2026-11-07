@@ -101,6 +101,54 @@ function verifier(nom, condition, detail = '') {
   r = await req('GET', '/api/admin/journaux', { jeton: admin });
   verifier('journal des actions', r.statut === 200 && r.json.journaux.some((j) => j.action === 'rang'));
 
+  // ---------------- rangs et rôles : R4 admin, R5 unique (passation)
+  // les R5 déjà en base (base locale) sont remis à la fin : le test ne doit pas modifier de vrais comptes
+  const r5Existants = await prisma.joueur.findMany({ where: { rang: 'R5', role: { not: 'SUPER_ADMIN' } }, select: { id: true } });
+  const comptes = {};
+  for (const suffixe of ['a', 'b', 'c']) {
+    r = await req('POST', '/api/auth/inscription', { corps: { pseudo: `${pseudo}${suffixe}`, motDePasse: mdp } });
+    comptes[suffixe] = { id: r.json.joueur.id, jeton: r.json.jeton };
+  }
+  const { a, b, c } = comptes;
+  r = await req('PATCH', `/api/admin/joueurs/${a.id}/role`, { jeton: admin, corps: { role: 'ADMIN' } });
+  verifier('un R1 ne peut pas être admin (400)', r.statut === 400, `statut ${r.statut}`);
+  await req('PATCH', `/api/admin/joueurs/${a.id}/rang`, { jeton: admin, corps: { rang: 'R3' } });
+  r = await req('PATCH', `/api/admin/joueurs/${a.id}/role`, { jeton: admin, corps: { role: 'ADMIN' } });
+  verifier('le super admin nomme un admin R3', r.statut === 200 && r.json.joueur.role === 'ADMIN');
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/role`, { jeton: a.jeton, corps: { role: 'ADMIN' } });
+  verifier('un admin simple (R3) ne nomme pas d\'admin (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: a.jeton, corps: { rang: 'R5' } });
+  verifier('un admin simple ne donne pas R5 (403)', r.statut === 403, `statut ${r.statut}`);
+  await req('PATCH', `/api/admin/joueurs/${a.id}/rang`, { jeton: admin, corps: { rang: 'R4' } });
+  await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: a.jeton, corps: { rang: 'R3' } });
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/role`, { jeton: a.jeton, corps: { role: 'ADMIN' } });
+  verifier('un R4 admin nomme un admin', r.statut === 200 && r.json.joueur.role === 'ADMIN', `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: a.jeton, corps: { rang: 'R2' } });
+  verifier('un admin descendu R2 perd le rôle admin', r.statut === 200 && r.json.joueur.role === 'JOUEUR' && r.json.joueur.rang === 'R2', JSON.stringify(r.json));
+  await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: a.jeton, corps: { rang: 'R3' } });
+  await req('PATCH', `/api/admin/joueurs/${b.id}/role`, { jeton: a.jeton, corps: { role: 'ADMIN' } });
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/role`, { jeton: a.jeton, corps: { role: 'JOUEUR' } });
+  verifier('un R4 admin retire un admin', r.statut === 200 && r.json.joueur.role === 'JOUEUR', `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: a.jeton, corps: { rang: 'R5' } });
+  verifier('un R4 admin ne donne pas R5 (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('GET', '/api/admin/journaux', { jeton: a.jeton });
+  verifier('un R4 admin n\'a pas les journaux (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: admin, corps: { rang: 'R5' } });
+  verifier('le super admin donne R5', r.statut === 200 && r.json.joueur.rang === 'R5', `statut ${r.statut}`);
+  r = await req('GET', '/api/admin/journaux', { jeton: b.jeton });
+  verifier('le R5 (non admin) a les droits du super admin : journaux', r.statut === 200, `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${a.id}/role`, { jeton: b.jeton, corps: { role: 'JOUEUR' } });
+  verifier('le R5 retire un R4 admin', r.statut === 200 && r.json.joueur.role === 'JOUEUR', `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${b.id}/rang`, { jeton: a.jeton, corps: { rang: 'R1' } });
+  verifier('personne sous le R5 ne peut le modifier (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('PATCH', `/api/admin/joueurs/${c.id}/rang`, { jeton: b.jeton, corps: { rang: 'R5' } });
+  verifier('passation : le R5 donne R5', r.statut === 200 && r.json.joueur.rang === 'R5', `statut ${r.statut}`);
+  const r5 = await prisma.joueur.findMany({ where: { rang: 'R5', role: { not: 'SUPER_ADMIN' } }, select: { id: true } });
+  verifier('un seul R5 après la passation', r5.length === 1 && r5[0].id === c.id, JSON.stringify(r5));
+  verifier('l\'ancien R5 redescend R4', (await prisma.joueur.findUnique({ where: { id: b.id } })).rang === 'R4');
+  await prisma.joueur.deleteMany({ where: { id: { in: [a.id, b.id, c.id] } } });
+  if (r5Existants.length) await prisma.joueur.updateMany({ where: { id: { in: r5Existants.map((x) => x.id) } }, data: { rang: 'R5' } });
+
   r = await req('PATCH', `/api/admin/joueurs/${id}/actif`, { jeton: admin, corps: { actif: false } });
   verifier('blocage du compte', r.statut === 200 && r.json.joueur.actif === false);
   r = await req('GET', '/api/auth/moi', { jeton });

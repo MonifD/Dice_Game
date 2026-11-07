@@ -66,7 +66,7 @@
         <h2 style="margin:0">Comptes</h2>
         <input id="recherche" placeholder="Rechercher un pseudo…" style="max-width:260px">
       </div>
-      <p class="muet petit">Les nouveaux comptes sont R1. Les R4 et R5 peuvent organiser des parties.</p>
+      <p class="muet petit">Les nouveaux comptes sont R1. Les R4 et R5 peuvent organiser des parties. Le R5 (un seul) a les droits du super admin : donner R5 à quelqu'un fait redescendre l'ancien R5 en R4. Les R4 admin peuvent nommer des admins. Un R1 ou un R2 ne peut pas être admin.</p>
       <div class="defile-x">
         <table class="tableau">
           <thead><tr><th>Pseudo</th><th>Rang</th><th>Rôle</th><th>Victoires</th><th>Inscrit le</th><th>Statut</th><th></th></tr></thead>
@@ -111,7 +111,7 @@
 
       // ------------------------------------------------ onglets selon les droits
       const onglets = [['creer', 'Créer une partie', true], ['comptes', 'Comptes & rangs', LW.estAdmin(moi)],
-        ['questions', 'Questions du quiz', LW.estAdmin(moi)], ['journaux', 'Journaux', LW.estSuperAdmin(moi)]].filter((o) => o[2]);
+        ['questions', 'Questions du quiz', LW.estAdmin(moi)], ['journaux', 'Journaux', LW.aDroitsSuperAdmin(moi)]].filter((o) => o[2]);
       $('#onglets').innerHTML = onglets.map(([id, t]) => `<button data-onglet="${id}">${t}</button>`).join('');
       const charges = {};
       const ouvrir = (id) => {
@@ -175,15 +175,17 @@
       const RANGS = ['R1', 'R2', 'R3', 'R4', 'R5'];
       let recherche = '';
       async function chargerJoueurs() {
-        const { joueurs } = await api(`/api/admin/joueurs?q=${encodeURIComponent(recherche)}`);
+        const { joueurs, droits } = await api(`/api/admin/joueurs?q=${encodeURIComponent(recherche)}`);
+        const joueursParId = Object.fromEntries(joueurs.map((j) => [j.id, j]));
         $('#joueurs').innerHTML = joueurs.map((j) => {
           const m = j.modifiable;
           const role = j.role === 'SUPER_ADMIN' ? '<span class="badge bleu">Super admin</span>'
-            : LW.estSuperAdmin(moi) && m ? `<select data-role="${j.id}" style="width:auto;padding:6px"><option value="JOUEUR" ${j.role === 'JOUEUR' ? 'selected' : ''}>Joueur</option><option value="ADMIN" ${j.role === 'ADMIN' ? 'selected' : ''}>Admin</option></select>`
-            : j.role === 'ADMIN' ? '<span class="badge bleu">Admin</span>' : '<span class="muet">Joueur</span>';
+            : droits.roles && m && LW.peutEtreAdmin(j.rang) ? `<select data-role="${j.id}" style="width:auto;padding:6px"><option value="JOUEUR" ${j.role === 'JOUEUR' ? 'selected' : ''}>Joueur</option><option value="ADMIN" ${j.role === 'ADMIN' ? 'selected' : ''}>Admin</option></select>`
+            : j.role === 'ADMIN' && LW.peutEtreAdmin(j.rang) ? '<span class="badge bleu">Admin</span>'
+            : `<span class="muet" ${droits.roles && m ? 'title="Un R1 ou un R2 ne peut pas être admin"' : ''}>Joueur</span>`;
           return `<tr class="${j.id === moi.id ? 'moi' : ''}">
             <td><b>${echapper(j.pseudo)}</b></td>
-            <td>${m ? `<select data-rang="${j.id}" style="width:auto;padding:6px">${RANGS.map((r) => `<option ${r === j.rang ? 'selected' : ''}>${r}</option>`).join('')}</select>` : `<span class="badge or">${j.rang}</span>`}</td>
+            <td>${m ? `<select data-rang="${j.id}" data-actuel="${j.rang}" style="width:auto;padding:6px">${RANGS.filter((r) => droits.rangs.includes(r) || r === j.rang).map((r) => `<option ${r === j.rang ? 'selected' : ''}>${r}</option>`).join('')}</select>` : `<span class="badge or">${j.rang}</span>`}</td>
             <td>${role}</td><td>${j.victoires}</td><td class="muet petit">${LW.date(j.dateInscription)}</td>
             <td>${j.actif ? '<span class="badge vert">Actif</span>' : '<span class="badge rouge">Bloqué</span>'}</td>
             <td>${m ? `<div class="ligne" style="gap:4px;flex-wrap:nowrap">
@@ -192,7 +194,15 @@
               <button class="btn petit danger" data-supprimer="${j.id}" data-pseudo="${echapper(j.pseudo)}">Supprimer</button></div>` : ''}</td></tr>`;
         }).join('') || '<tr><td colspan="7" class="vide">Aucun joueur.</td></tr>';
 
-        $$('[data-rang]').forEach((s) => (s.onchange = () => action(`/api/admin/joueurs/${s.dataset.rang}/rang`, 'PATCH', { rang: s.value }, 'Rang mis à jour.')));
+        $$('[data-rang]').forEach((s) => (s.onchange = () => {
+          // un seul R5 : confirmer la passation (l'ancien R5 redescend R4 ; si c'est moi, je perds les droits du R5)
+          if (!LW.peutEtreAdmin(s.value) && joueursParId[s.dataset.rang]?.role === 'ADMIN'
+            && !confirm(`Un ${s.value} ne peut pas être admin : il perdra le rôle admin. Continuer ?`)) { s.value = s.dataset.actuel; return; }
+          if (s.value === 'R5' && !confirm(`Donner le rang R5 ? Il n'y a qu'un seul R5 : l'actuel R5${moi.rang === 'R5' && moi.role !== 'SUPER_ADMIN' ? ' (toi)' : ''} redescendra R4.`)) { s.value = s.dataset.actuel; return; }
+          const jeTransmets = s.value === 'R5' && moi.rang === 'R5' && moi.role !== 'SUPER_ADMIN';
+          action(`/api/admin/joueurs/${s.dataset.rang}/rang`, 'PATCH', { rang: s.value }, 'Rang mis à jour.')
+            .then((ok) => { if (ok && jeTransmets) setTimeout(() => location.reload(), 800); }); // mes droits ont changé
+        }));
         $$('[data-role]').forEach((s) => (s.onchange = () => action(`/api/admin/joueurs/${s.dataset.role}/role`, 'PATCH', { role: s.value }, 'Rôle mis à jour.')));
         $$('[data-bloquer]').forEach((b) => (b.onclick = () => action(`/api/admin/joueurs/${b.dataset.bloquer}/actif`, 'PATCH', { actif: b.dataset.actif !== 'true' }, 'Compte mis à jour.')));
         $$('[data-mdp]').forEach((b) => (b.onclick = () => {
@@ -204,8 +214,10 @@
         }));
       }
       async function action(url, methode, corps, ok) {
-        try { await api(url, { methode, corps }); toast(ok, 'ok'); } catch (e) { toast(e.message, 'erreur'); }
+        let reussi = false;
+        try { await api(url, { methode, corps }); toast(ok, 'ok'); reussi = true; } catch (e) { toast(e.message, 'erreur'); }
         chargerJoueurs();
+        return reussi;
       }
       let delai;
       $('#recherche').oninput = (e) => { clearTimeout(delai); delai = setTimeout(() => { recherche = e.target.value; chargerJoueurs(); }, 250); };

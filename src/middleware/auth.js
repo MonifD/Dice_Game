@@ -29,4 +29,8 @@ module.exports = {
   exigerOrganisateur: exiger(perms.peutOrganiser, 'Réservé aux R4, R5 et admins.'),
   exigerAdmin: exiger(perms.estAdmin, 'Réservé aux admins.'),
   exigerSuperAdmin: exiger(perms.estSuperAdmin, 'Réservé au super admin.'),
+  /** Super admin ou R5 (mêmes droits). */
+  exigerDroitsSuperAdmin: exiger(perms.aDroitsSuperAdmin, 'Réservé au R5 et au super admin.'),
+  /** Nommer / retirer des admins : R4 admin, R5, super admin. */
+  exigerChangerRoles: exiger(perms.peutChangerRoles, 'Réservé aux R4 admin, au R5 et au super admin.'),
 };

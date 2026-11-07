@@ -74,8 +74,14 @@
   };
 
   // ---------------------------------------------------------- droits (miroir de src/services/permissions.js, pour l'affichage seulement)
-  LW.estAdmin = (j) => j && (j.role === 'ADMIN' || j.role === 'SUPER_ADMIN');
+  // niveaux : super admin 4 > R5 3 > R4 admin 2 > admin 1 > joueur 0 (le R5 a les droits du super admin)
+  // un R1 / R2 ne peut pas être admin
+  LW.peutEtreAdmin = (rang) => rang !== 'R1' && rang !== 'R2';
+  LW.niveau = (j) => (!j ? 0 : j.role === 'SUPER_ADMIN' ? 4 : j.rang === 'R5' ? 3 : j.role === 'ADMIN' && LW.peutEtreAdmin(j.rang) ? (j.rang === 'R4' ? 2 : 1) : 0);
+  LW.estAdmin = (j) => LW.niveau(j) >= 1;
   LW.estSuperAdmin = (j) => j && j.role === 'SUPER_ADMIN';
+  LW.aDroitsSuperAdmin = (j) => LW.niveau(j) >= 3;
+  LW.peutChangerRoles = (j) => LW.niveau(j) >= 2;
   /** Seuls les rangs R4 et R5 sont affichés à côté des pseudos (R1–R3 : le nom seul). */
   LW.rangVisible = (rang) => rang === 'R4' || rang === 'R5';
   LW.peutOrganiser = (j) => j && (LW.estAdmin(j) || j.rang === 'R4' || j.rang === 'R5');
