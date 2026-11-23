@@ -656,3 +656,4 @@ body.jeu-jour { background: radial-gradient(1100px 600px at 50% -200px, #3a3423 
   .lg-narration { font-size: 1rem; }
   .lg-roles { grid-template-columns: 1fr; }
 }
+.edition-desig { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--accent-fond); border: 1px solid rgba(245, 165, 36, .35); font-size: .9rem; }

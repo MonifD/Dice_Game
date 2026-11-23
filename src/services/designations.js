@@ -36,13 +36,12 @@ async function verrouiller(tx, objet, j) {
  * Remplace la désignation active d'un (objet, jour) par une nouvelle ligne.
  * @returns {{ avant: object|null, apres: object }}
  */
-async function remplacer({ objet, jourJ, joueurId = null, mode, partieId = null, auteurId = null }, tx) {
+async function remplacer({ objet, jourJ, joueurId = null, mode, partieId = null, auteurId = null, maintenant = new Date() }, tx) {
   await verrouiller(tx, objet, jourJ);
   const date = jour.versDate(jourJ);
   const avant = await tx.designation.findFirst({
     where: { objet, jour: date, active: true }, orderBy: { creeLe: 'desc' }, include: { joueur: { select: SELECT_JOUEUR } },
   });
-  const maintenant = new Date();
   await tx.designation.updateMany({ where: { objet, jour: date, active: true }, data: { active: false, remplaceeLe: maintenant } });
   const apres = await tx.designation.create({
     data: {
@@ -60,8 +59,13 @@ async function attribuerGagnant({ objet, jourJ, joueurId, partieId }) {
   return prisma.$transaction((tx) => remplacer({ objet, jourJ, joueurId: Number(joueurId), mode: 'PARTIE', partieId }, tx));
 }
 
-/** Modification / retrait manuel (R4, R5, admins — droits vérifiés par la route). joueurId null = retirer. */
-async function modifier({ objet, jourJ, joueurId, auteur }) {
+/**
+ * Modification / retrait manuel (R4, R5, admins — droits vérifiés par la route). joueurId null = retirer.
+ * `origine` ({ objet, jour }) : on modifie une désignation existante en changeant son rôle ou sa date
+ * (ex. VIP du 23/11 -> Conducteur du 23/11). La désignation d'origine est alors retirée dans la même opération,
+ * au lieu de garder les deux.
+ */
+async function modifier({ objet, jourJ, joueurId, auteur, origine = null }) {
   if (!OBJETS_DESIGNATION.includes(objet)) throw new ErreurDesignation('Choisis Conducteur ou VIP.');
   if (!jour.estJour(jourJ)) throw new ErreurDesignation('Date invalide.');
   if (Math.abs(jour.ecartJours(jour.aujourdhui(), jourJ)) > 366) throw new ErreurDesignation('La date doit être à moins d\'un an d\'aujourd\'hui.');
@@ -70,14 +74,46 @@ async function modifier({ objet, jourJ, joueurId, auteur }) {
     cible = await prisma.joueur.findUnique({ where: { id: Number(joueurId) } });
     if (!cible || cible.supprimeLe) throw new ErreurDesignation('Joueur introuvable.', 404);
   }
+  const deplacement = origine && OBJETS_DESIGNATION.includes(origine.objet) && jour.estJour(origine.jour)
+    && (origine.objet !== objet || origine.jour !== jourJ)
+    ? { objet: origine.objet, jour: origine.jour, joueurId: origine.joueurId ? Number(origine.joueurId) : null } : null;
+  if (deplacement && !cible) throw new ErreurDesignation('Choisis la personne à désigner.');
+
+  const maintenant = new Date(); // même horodatage pour les deux lignes d'un déplacement (l'historique les relie)
   const r = await prisma.$transaction(async (tx) => {
-    const actuelle = await tx.designation.findFirst({ where: { objet, jour: jour.versDate(jourJ), active: true } });
-    if ((actuelle?.joueurId ?? null) === (cible?.id ?? null)) throw new ErreurDesignation(cible ? `${cible.pseudo} est déjà désigné(e) pour ce jour.` : 'Personne n\'est désigné pour ce jour.');
-    return remplacer({ objet, jourJ, joueurId: cible?.id ?? null, mode: 'MANUELLE', auteurId: auteur.id }, tx);
+    // verrous toujours pris dans le même ordre (pas d'interblocage entre deux modifications croisées)
+    const cles = [[objet, jourJ], ...(deplacement ? [[deplacement.objet, deplacement.jour]] : [])].sort((x, y) => `${x}`.localeCompare(`${y}`));
+    for (const [o, j] of cles) await verrouiller(tx, o, j);
+    const actuelle = await tx.designation.findFirst({ where: { objet, jour: jour.versDate(jourJ), active: true }, include: { joueur: { select: SELECT_JOUEUR } } });
+    if (!deplacement && (actuelle?.joueurId ?? null) === (cible?.id ?? null)) {
+      throw new ErreurDesignation(cible ? `${cible.pseudo} est déjà désigné(e) pour ce jour.` : 'Personne n\'est désigné pour ce jour.');
+    }
+    let retiree = null;
+    if (deplacement) {
+      const ancienne = await tx.designation.findFirst({
+        where: { objet: deplacement.objet, jour: jour.versDate(deplacement.jour), active: true }, include: { joueur: { select: SELECT_JOUEUR } },
+      });
+      // on ne retire l'ancienne désignation que si elle n'a pas changé entre-temps (toujours la personne modifiée)
+      if (ancienne?.joueurId && ancienne.joueurId === (deplacement.joueurId ?? cible.id)) {
+        retiree = await remplacer({ objet: deplacement.objet, jourJ: deplacement.jour, joueurId: null, mode: 'MANUELLE', auteurId: auteur.id, maintenant }, tx);
+      }
+    }
+    const res = (actuelle?.joueurId ?? null) === cible.id && deplacement
+      ? { avant: null, apres: actuelle, inchange: true }
+      : await remplacer({ objet, jourJ, joueurId: cible?.id ?? null, mode: 'MANUELLE', auteurId: auteur.id, maintenant }, tx);
+    return { ...res, retiree };
   });
-  await journaliser(auteur.id, cible ? 'designation_modifiee' : 'designation_retiree', {
-    role: LIBELLES[objet], jour: jourJ, ancien: r.avant?.joueur ? nomAffiche(r.avant.joueur) : 'Non désigné', nouveau: cible ? cible.pseudo : 'Non désigné',
-  });
+  const nomRole = (o, j) => `${LIBELLES[o]} du ${j.slice(8, 10)}/${j.slice(5, 7)}`;
+  if (r.retiree) {
+    await journaliser(auteur.id, 'designation_deplacee', {
+      joueur: cible.pseudo, ancien: nomAffiche(r.retiree.avant?.joueur), de: nomRole(deplacement.objet, deplacement.jour), vers: nomRole(objet, jourJ),
+      remplace: r.avant?.joueur ? nomAffiche(r.avant.joueur) : 'Non désigné',
+    });
+  } else {
+    await journaliser(auteur.id, cible ? 'designation_modifiee' : 'designation_retiree', {
+      role: LIBELLES[objet], jour: jourJ, ancien: r.avant?.joueur ? nomAffiche(r.avant.joueur) : 'Non désigné', nouveau: cible ? cible.pseudo : 'Non désigné',
+    });
+  }
   return r.apres;
 }
 
@@ -150,6 +186,18 @@ async function historique({ registre = null, limite = 200 } = {}) {
   const remplacante = new Map();
   for (const liste of parCle.values()) liste.forEach((l, i) => { if (liste[i + 1]) remplacante.set(l.id, liste[i + 1]); });
 
+  // Déplacement (ex. VIP -> Conducteur) : deux lignes MANUELLE du même auteur au même instant,
+  // l'une retire la personne (joueur vide, ancienPseudo = elle), l'autre la désigne ailleurs.
+  const deplacements = new Map(); // id de ligne -> { objet, jour } de l'autre côté
+  for (const l of lignes) {
+    if (l.mode !== 'MANUELLE' || l.joueurId !== null || !l.ancienPseudo) continue;
+    const autre = lignes.find((x) => x.id !== l.id && x.mode === 'MANUELLE' && x.auteurId === l.auteurId
+      && +x.creeLe === +l.creeLe && x.joueur && (x.joueur.pseudoSupprime || x.joueur.pseudo) === l.ancienPseudo);
+    if (autre) {
+      deplacements.set(l.id, { sens: 'vers', objet: autre.objet, jour: jour.depuisDate(autre.jour) });
+      deplacements.set(autre.id, { sens: 'depuis', objet: l.objet, jour: jour.depuisDate(l.jour) });
+    }
+  }
   const vers = (l) => {
     const r = remplacante.get(l.id);
     let statut = l.active ? 'en_vigueur' : 'remplace';
@@ -159,11 +207,13 @@ async function historique({ registre = null, limite = 200 } = {}) {
       id: l.id, objet: l.objet, jour: jour.depuisDate(l.jour), mode: l.mode, active: l.active,
       joueur: joueurPublic(l.joueur), ancienPseudo: l.ancienPseudo, auteur: auteurDe[l.auteurId] || null,
       date: l.creeLe, remplaceeLe: l.remplaceeLe, statut, modifiePar, jeu: jeu(l.partieId),
+      deplacement: deplacements.get(l.id) || null,
     };
   };
   return {
     aujourdhui: auj,
-    aVenir: aVenir.map((l) => ({ ...vers(l), statut: 'en_vigueur' })),
+    // un retrait à la main (ou un déplacement) ne laisse pas de case « Non désigné » dans les désignations à venir
+    aVenir: aVenir.filter((l) => l.joueurId !== null || l.mode !== 'MANUELLE').map((l) => ({ ...vers(l), statut: 'en_vigueur' })),
     journal: lignes.map(vers),
   };
 }

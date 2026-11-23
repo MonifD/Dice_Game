@@ -45,11 +45,15 @@ router.get('/designations/historique', async (req, res, next) => {
   try { res.json(await designations.historique({ registre })); } catch (e) { next(e); }
 });
 
-/** Modifier ou retirer à la main le Conducteur / VIP d'une date (R4, R5, admins). joueurId: null = retirer. */
+/**
+ * Modifier ou retirer à la main le Conducteur / VIP d'une date (R4, R5, admins). joueurId: null = retirer.
+ * Avec `origine: { objet, jour }`, la désignation d'origine est déplacée (pas de doublon VIP + Conducteur).
+ */
 router.put('/designations', exigerOrganisateur, async (req, res, next) => {
   try {
-    const { objet, jour: jourJ, joueurId = null } = req.body || {};
-    const d = await designations.modifier({ objet, jourJ, joueurId, auteur: req.joueur });
+    const { objet, jour: jourJ, joueurId = null, origine = null } = req.body || {};
+    // origine { objet, jour } : modification d'une désignation existante (changement de rôle ou de date)
+    const d = await designations.modifier({ objet, jourJ, joueurId, auteur: req.joueur, origine });
     res.json({ designation: { objet: d.objet, jour: jour(d.jour), joueur: joueurPublic(d.joueur) } });
   } catch (e) { next(e); }
 });

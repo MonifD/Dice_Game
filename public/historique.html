@@ -20,11 +20,12 @@
       <div class="ligne espace"><h2 style="margin:0">📅 Désignations à venir</h2><span class="muet petit" id="auj"></span></div>
       <p class="muet petit">Conducteur et VIP du train désignés pour aujourd'hui et les jours suivants (un jour commence à 3h00, heure de Paris).</p>
       <div class="a-venir" id="a-venir"><div class="vide">Chargement…</div></div>
+      <div class="edition-desig cache" id="edition-desig"></div>
       <form class="form-desig cache" id="form-desig">
         <div class="champ"><label for="d-objet">Rôle</label><select id="d-objet"><option value="CONDUCTEUR">🚂 Conducteur du train</option><option value="VIP">⭐ VIP du train</option></select></div>
         <div class="champ"><label for="d-jour">Date</label><input type="date" id="d-jour" required></div>
         <div class="champ"><label for="d-joueur">Personne</label><select id="d-joueur"><option value="">— Non désigné (retirer) —</option></select></div>
-        <div class="champ"><button class="btn principal" style="width:100%">✎ Modifier la désignation</button></div>
+        <div class="champ"><button class="btn principal" style="width:100%" id="btn-desig">✎ Désigner</button></div>
       </form>
     </section>
 
@@ -96,6 +97,12 @@
         if (d.mode === 'PARTIE') return d.jeu ? `🏆 gagné au ${d.jeu.icone} ${echapper(d.jeu.nom)}` : '🏆 gagné en partie';
         const avant = d.ancienPseudo ? ` <span class="muet">(avant : ${echapper(d.ancienPseudo)})</span>` : '';
         if (d.mode === 'SUPPRESSION') return `🗑 compte supprimé${avant}`;
+        if (d.deplacement) {
+          const o = LW.objets[d.deplacement.objet];
+          return d.deplacement.sens === 'vers'
+            ? `↪ déplacé vers ${o.icone} ${o.court} du ${LW.jour(d.deplacement.jour)} par <b>${echapper(d.auteur || '?')}</b>`
+            : `✎ déplacé depuis ${o.icone} ${o.court} du ${LW.jour(d.deplacement.jour)} par <b>${echapper(d.auteur || '?')}</b>${avant}`;
+        }
         return `✎ ${d.joueur ? 'modifié' : 'retiré'} à la main par <b>${echapper(d.auteur || '?')}</b>${avant}`;
       }
       function statut(d) {
@@ -123,8 +130,7 @@
 
         $$('[data-modif]').forEach((b) => (b.onclick = () => {
           const [objet, jour, joueurId] = b.dataset.modif.split('|');
-          $('#d-objet').value = objet; $('#d-jour').value = jour; $('#d-joueur').value = joueurId;
-          $('#d-joueur').focus();
+          editer({ objet, jour, joueurId });
           $('#form-desig').scrollIntoView({ behavior: 'smooth', block: 'center' });
         }));
         $$('[data-retirer]').forEach((b) => (b.onclick = () => {
@@ -132,10 +138,30 @@
           if (confirm(`Retirer ${b.dataset.pseudo} (${LW.objets[objet].court} du ${LW.jour(jour)}) ? La désignation passera à « Non désigné ».`)) enregistrer(objet, jour, null);
         }));
       }
-      async function enregistrer(objet, jour, joueurId) {
+      /**
+       * Modification d'une désignation existante (bouton ✎) : si on change son rôle ou sa date, elle est DÉPLACÉE
+       * (l'ancienne est retirée) au lieu de créer une deuxième désignation.
+       */
+      let edition = null;
+      function editer(e) {
+        edition = e;
+        const bloc = $('#edition-desig');
+        bloc.classList.toggle('cache', !e);
+        if (e) {
+          $('#d-objet').value = e.objet; $('#d-jour').value = e.jour; $('#d-joueur').value = e.joueurId;
+          const o = LW.objets[e.objet];
+          bloc.innerHTML = `✎ Modification de <b>${o.icone} ${o.court} du ${LW.jour(e.jour)}</b>${e.joueurId ? ` (${echapper($('#d-joueur').selectedOptions[0]?.textContent || '')})` : ''} : change la personne, le rôle ou la date. <button type="button" class="btn lien petit" id="annuler-edition">Annuler</button>`;
+          $('#annuler-edition').onclick = () => editer(null);
+          $('#d-joueur').focus();
+        }
+        $('#btn-desig').textContent = e ? '✎ Enregistrer la modification' : '✎ Désigner';
+      }
+      async function enregistrer(objet, jour, joueurId, origine = null) {
         try {
-          await LW.api('/api/designations', { methode: 'PUT', corps: { objet, jour, joueurId } });
-          toast(joueurId ? 'Désignation modifiée.' : 'Désignation retirée.', 'ok');
+          await LW.api('/api/designations', { methode: 'PUT', corps: { objet, jour, joueurId, ...(origine ? { origine } : {}) } });
+          const deplace = origine && (origine.objet !== objet || origine.jour !== jour);
+          toast(deplace ? 'Désignation déplacée.' : joueurId ? 'Désignation modifiée.' : 'Désignation retirée.', 'ok');
+          editer(null);
         } catch (e) { toast(e.message, 'erreur'); }
         chargerDesignations();
       }
@@ -147,7 +173,10 @@
         }).catch(() => {});
         $('#form-desig').onsubmit = (e) => {
           e.preventDefault();
-          enregistrer($('#d-objet').value, $('#d-jour').value, $('#d-joueur').value ? Number($('#d-joueur').value) : null);
+          const joueurId = $('#d-joueur').value ? Number($('#d-joueur').value) : null;
+          // en modification (✎) : la désignation d'origine est remplacée, même si le rôle ou la date change
+          const origine = edition && edition.joueurId ? { objet: edition.objet, jour: edition.jour, joueurId: Number(edition.joueurId) } : null;
+          enregistrer($('#d-objet').value, $('#d-jour').value, joueurId, origine);
         };
       }
       chargerDesignations();

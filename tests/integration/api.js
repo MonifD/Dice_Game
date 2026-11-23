@@ -195,6 +195,19 @@ function verifier(nom, condition, detail = '') {
   const modif = r.json.journal.find((d) => d.joueur?.id === p.id && d.jour === APRES);
   verifier('modification manuelle : ancien nom, nouveau nom, auteur, date', modif.mode === 'MANUELLE' && modif.ancienPseudo === n.pseudo && modif.auteur === pseudo && modif.date);
 
+  // modifier le rôle d'une désignation existante : elle est déplacée (pas de doublon VIP + Conducteur)
+  r = await req('PUT', '/api/designations', { jeton, corps: { objet: 'VIP', jour: APRES, joueurId: p.id, origine: { objet: 'CONDUCTEUR', jour: APRES, joueurId: p.id } } });
+  verifier('changer le rôle d\'une désignation (Conducteur -> VIP)', r.statut === 200 && r.json.designation.objet === 'VIP', JSON.stringify(r.json));
+  const actives = await prisma.designation.findMany({ where: { jour: new Date(`${APRES}T00:00:00Z`), active: true } });
+  verifier('l\'ancienne désignation est retirée, pas de doublon', actives.filter((d) => d.joueurId === p.id).length === 1
+    && actives.find((d) => d.objet === 'CONDUCTEUR')?.joueurId == null, JSON.stringify(actives));
+  r = await req('GET', '/api/designations/historique', { jeton: m.jeton });
+  verifier('désignations à venir : pas de case « Non désigné » laissée par le déplacement', !r.json.aVenir.some((d) => d.objet === 'CONDUCTEUR' && d.jour === APRES));
+  verifier('historique : le déplacement est relié (« déplacé vers / depuis »)', r.json.journal.some((d) => d.deplacement?.sens === 'vers' && d.objet === 'CONDUCTEUR')
+    && r.json.journal.some((d) => d.deplacement?.sens === 'depuis' && d.objet === 'VIP' && d.joueur?.id === p.id));
+  r = await req('PUT', '/api/designations', { jeton, corps: { objet: 'CONDUCTEUR', jour: APRES, joueurId: p.id, origine: { objet: 'VIP', jour: APRES, joueurId: p.id } } });
+  verifier('et dans l\'autre sens (VIP -> Conducteur)', r.statut === 200 && r.json.designation.objet === 'CONDUCTEUR', JSON.stringify(r.json));
+
   // mot de passe temporaire
   r = await req('POST', `/api/admin/joueurs/${p.id}/mot-de-passe`, { jeton, corps: { motDePasse: 'temporaire-123' } });
   verifier('un R4 donne un mot de passe temporaire à un membre', r.statut === 200, `statut ${r.statut}`);
