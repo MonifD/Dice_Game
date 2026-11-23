@@ -11,19 +11,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <style>
-    .jeux { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
-    .jeu-carte { text-align: left; background: var(--panneau-2); border: 1px solid var(--bord); border-radius: 12px; padding: 12px; cursor: pointer; color: var(--texte); font: inherit; display: flex; gap: 10px; align-items: flex-start; }
-    .jeu-carte:hover { border-color: #3a4350; }
-    .jeu-carte.choisi { border-color: var(--accent); background: var(--accent-fond); }
-    .jeu-carte .ic { font-size: 28px; line-height: 1; }
-    @media (max-width: 560px) {
-      .jeux { grid-template-columns: 1fr 1fr; gap: 8px; }
-      .jeu-carte { align-items: center; padding: 10px; gap: 8px; font-size: .9rem; }
-      .jeu-carte p { display: none; } /* la description s'affiche dans « 2. Paramètres » */
-      .jeu-carte .ic { font-size: 24px; }
-      .choix-objet span { padding: 12px 6px; font-size: .9rem; }
-    }
-    .jeu-carte p { margin: 4px 0 0; font-size: .8rem; color: var(--texte-2); }
     .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 16px; }
     .case { display: flex; align-items: center; gap: 10px; }
     .case label { margin: 0; }
@@ -35,38 +22,13 @@
     <h1>Administration</h1>
     <div class="onglets" id="onglets"></div>
 
-    <!-- Créer une partie -->
-    <section id="onglet-creer" class="cache">
-      <div class="panneau">
-        <h2>1. Choisis le mini-jeu</h2>
-        <div class="jeux" id="jeux"></div>
-      </div>
-      <form class="panneau cache" id="form-partie" style="margin-top:16px">
-        <h2 id="titre-params">2. Paramètres</h2>
-        <p class="muet" id="desc-jeu"></p>
-        <div class="champ">
-          <label>Objet de la partie <span class="muet petit">(ce que gagne le vainqueur)</span></label>
-          <div class="choix-objet" id="choix-objet">
-            <label><input type="radio" name="objet" value="CONDUCTEUR" required><span>🚂 Conducteur du train</span></label>
-            <label><input type="radio" name="objet" value="VIP" required><span>⭐ VIP du train</span></label>
-          </div>
-        </div>
-        <div class="champ">
-          <label for="date-objet">Le gagnant sera Conducteur / VIP le</label>
-          <input type="date" id="date-objet" required style="max-width:220px">
-        </div>
-        <div class="params" id="params"></div>
-        <button class="btn principal geant" style="width:100%;margin-top:8px">Créer la salle d'attente</button>
-      </form>
-    </section>
-
     <!-- Comptes -->
     <section id="onglet-comptes" class="cache panneau">
       <div class="ligne espace">
         <h2 style="margin:0">Comptes</h2>
         <input id="recherche" placeholder="Rechercher un pseudo…" style="max-width:260px">
       </div>
-      <p class="muet petit">Les nouveaux comptes sont R1. Les R4 et R5 peuvent organiser des parties. Le R5 (un seul) a les droits du super admin : donner R5 à quelqu'un fait redescendre l'ancien R5 en R4. Les R4 admin peuvent nommer des admins. Un R1 ou un R2 ne peut pas être admin.</p>
+      <p class="muet petit" id="aide-comptes"></p>
       <div class="defile-x">
         <table class="tableau">
           <thead><tr><th>Pseudo</th><th>Rang</th><th>Rôle</th><th>Victoires</th><th>Inscrit le</th><th>Statut</th><th></th></tr></thead>
@@ -106,74 +68,50 @@
     (async () => {
       const { $, $$, echapper, api, toast } = LW;
       const moi = await LW.session();
+      if (location.hash === '#creer') { location.replace('/jeux'); return; } // ancienne adresse de la création de partie
       if (!LW.peutOrganiser(moi)) { location.href = '/accueil'; return; }
       LW.barre('admin');
 
       // ------------------------------------------------ onglets selon les droits
-      const onglets = [['creer', 'Créer une partie', true], ['comptes', 'Comptes & rangs', LW.estAdmin(moi)],
+      const onglets = [['comptes', LW.estAdmin(moi) ? 'Comptes & rangs' : 'Comptes', true],
         ['questions', 'Questions du quiz', LW.estAdmin(moi)], ['journaux', 'Journaux', LW.aDroitsSuperAdmin(moi)]].filter((o) => o[2]);
       $('#onglets').innerHTML = onglets.map(([id, t]) => `<button data-onglet="${id}">${t}</button>`).join('');
       const charges = {};
       const ouvrir = (id) => {
-        if (!onglets.some((o) => o[0] === id)) id = 'creer';
+        if (!onglets.some((o) => o[0] === id)) id = 'comptes';
         $$('#onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.onglet === id));
         onglets.forEach(([o]) => $(`#onglet-${o}`).classList.toggle('cache', o !== id));
         history.replaceState(null, '', `#${id}`);
-        if (!charges[id]) { charges[id] = true; ({ creer: chargerJeux, comptes: chargerJoueurs, questions: chargerQuestions, journaux: chargerJournaux })[id](); }
+        if (!charges[id]) { charges[id] = true; ({ comptes: chargerJoueurs, questions: chargerQuestions, journaux: chargerJournaux })[id](); }
       };
       $$('#onglets button').forEach((b) => (b.onclick = () => ouvrir(b.dataset.onglet)));
-
-      // ------------------------------------------------ création de partie
-      let jeux = [];
-      let jeuChoisi = null;
-      async function chargerJeux() {
-        ({ minijeux: jeux } = await api('/api/minijeux'));
-        $('#jeux').innerHTML = jeux.map((j) => `<button type="button" class="jeu-carte" data-id="${j.id}">
-          <span class="ic">${j.icone}</span><span><b>${echapper(j.nom)}</b><p>${echapper(j.description)}</p></span></button>`).join('');
-        $$('.jeu-carte').forEach((b) => (b.onclick = () => choisirJeu(b.dataset.id)));
-      }
-      function champParam(p) {
-        const id = `p-${p.cle}`;
-        if (p.type === 'booleen') return `<div class="champ case"><input type="checkbox" id="${id}" ${p.defaut ? 'checked' : ''}><label for="${id}">${echapper(p.libelle)}</label></div>`;
-        if (p.type === 'choix') return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><select id="${id}">${p.options.map((o) =>
-          `<option value="${echapper(o.valeur)}" ${String(o.valeur) === String(p.defaut) ? 'selected' : ''}>${echapper(o.libelle)}</option>`).join('')}</select>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
-        if (p.type === 'nombre') return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><input type="number" id="${id}" value="${p.defaut}" ${p.min !== undefined ? `min="${p.min}"` : ''} ${p.max !== undefined ? `max="${p.max}"` : ''} step="${p.pas || 1}">${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
-        if (p.multiligne) return `<div class="champ" style="grid-column:1/-1"><label for="${id}">${echapper(p.libelle)}</label><textarea id="${id}" rows="5" maxlength="${p.max || 2000}" placeholder="${echapper(p.placeholder || '')}" style="width:100%;resize:vertical">${echapper(p.defaut ?? '')}</textarea>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
-        return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><input id="${id}" value="${echapper(p.defaut ?? '')}" ${p.max ? `maxlength="${p.max}"` : ''}>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
-      }
-      function choisirJeu(id) {
-        jeuChoisi = jeux.find((j) => j.id === id);
-        $$('.jeu-carte').forEach((b) => b.classList.toggle('choisi', b.dataset.id === id));
-        $('#form-partie').classList.remove('cache');
-        $('#titre-params').textContent = `2. Paramètres — ${jeuChoisi.icone} ${jeuChoisi.nom}`;
-        $('#desc-jeu').textContent = jeuChoisi.description;
-        if (!$('#date-objet').value) $('#date-objet').value = LW.aujourdhui();
-        $('#date-objet').min = LW.aujourdhui();
-        const propres = jeuChoisi.parametres.filter((p) => !p.commun);
-        const communs = jeuChoisi.parametres.filter((p) => p.commun);
-        $('#params').innerHTML = propres.map(champParam).join('') + (propres.length ? '' : '') + communs.map(champParam).join('');
-        $('#form-partie').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      $('#form-partie').onsubmit = async (e) => {
-        e.preventDefault();
-        const parametres = {};
-        for (const p of jeuChoisi.parametres) {
-          const el = $(`#p-${p.cle}`);
-          parametres[p.cle] = p.type === 'booleen' ? el.checked : el.value;
-        }
-        try {
-          const objet = document.querySelector('input[name="objet"]:checked')?.value;
-          if (!objet) { toast('Choisis l\'objet de la partie : Conducteur ou VIP du train.', 'erreur'); return; }
-          const dateObjet = $('#date-objet').value;
-          if (!dateObjet) { toast('Choisis la date à laquelle le gagnant sera Conducteur ou VIP.', 'erreur'); return; }
-          const { code } = await api('/api/salles', { methode: 'POST', corps: { miniJeu: jeuChoisi.id, objet, dateObjet, parametres } });
-          location.href = `/salle?code=${code}`;
-        } catch (err) { toast(err.message, 'erreur'); }
-      };
 
       // ------------------------------------------------ comptes
       const RANGS = ['R1', 'R2', 'R3', 'R4', 'R5'];
       let recherche = '';
+      $('#aide-comptes').textContent = (LW.estAdmin(moi)
+        ? 'Les nouveaux comptes sont R1. Le R5 (un seul) a les droits du super admin : donner R5 à quelqu\'un fait redescendre l\'ancien R5 en R4. Les R4 admin peuvent nommer des admins. Un R1 ou un R2 ne peut pas être admin. '
+        : '') + '🔑 donne un mot de passe temporaire (le membre devra le changer à sa prochaine connexion ; le mot de passe actuel n\'est jamais visible). Un R4 ne gère ni les R5 ni les admins ; un R5 ne gère pas les admins ; personne ne peut supprimer son propre compte.';
+
+      /** Petite fenêtre (confirmation ou saisie) : résout avec la valeur saisie, true, ou null si annulé. */
+      function fenetre({ titre, texte, champ = false, bouton = 'Confirmer', danger = false }) {
+        return new Promise((resolve) => {
+          const v = LW.h(`<div class="voile"><form class="panneau fenetre">
+            <h2>${echapper(titre)}</h2>${texte ? `<p class="muet">${echapper(texte)}</p>` : ''}
+            ${champ ? `<div class="champ"><label for="f-mdp">Mot de passe temporaire</label><input type="text" id="f-mdp" minlength="6" maxlength="72" required autocomplete="off" spellcheck="false"><div class="aide">6 caractères minimum. Transmets-le au membre : il devra le changer à sa prochaine connexion.</div></div>` : ''}
+            <div class="ligne"><button class="btn ${danger ? 'danger' : 'principal'}">${echapper(bouton)}</button><button type="button" class="btn lien" data-annuler>Annuler</button></div>
+          </form></div>`);
+          const fermer = (val) => { v.remove(); document.removeEventListener('keydown', echap); resolve(val); };
+          const echap = (e) => { if (e.key === 'Escape') fermer(null); };
+          document.addEventListener('keydown', echap);
+          v.querySelector('[data-annuler]').onclick = () => fermer(null);
+          v.onclick = (e) => { if (e.target === v) fermer(null); };
+          v.querySelector('form').onsubmit = (e) => { e.preventDefault(); fermer(champ ? v.querySelector('#f-mdp').value : true); };
+          document.body.appendChild(v);
+          (v.querySelector('#f-mdp') || v.querySelector('button')).focus();
+        });
+      }
+
       async function chargerJoueurs() {
         const { joueurs, droits } = await api(`/api/admin/joueurs?q=${encodeURIComponent(recherche)}`);
         const joueursParId = Object.fromEntries(joueurs.map((j) => [j.id, j]));
@@ -188,10 +126,10 @@
             <td>${m ? `<select data-rang="${j.id}" data-actuel="${j.rang}" style="width:auto;padding:6px">${RANGS.filter((r) => droits.rangs.includes(r) || r === j.rang).map((r) => `<option ${r === j.rang ? 'selected' : ''}>${r}</option>`).join('')}</select>` : `<span class="badge or">${j.rang}</span>`}</td>
             <td>${role}</td><td>${j.victoires}</td><td class="muet petit">${LW.date(j.dateInscription)}</td>
             <td>${j.actif ? '<span class="badge vert">Actif</span>' : '<span class="badge rouge">Bloqué</span>'}</td>
-            <td>${m ? `<div class="ligne" style="gap:4px;flex-wrap:nowrap">
-              <button class="btn petit" data-bloquer="${j.id}" data-actif="${j.actif}">${j.actif ? 'Bloquer' : 'Débloquer'}</button>
-              <button class="btn petit" data-mdp="${j.id}" title="Réinitialiser le mot de passe">🔑</button>
-              <button class="btn petit danger" data-supprimer="${j.id}" data-pseudo="${echapper(j.pseudo)}">Supprimer</button></div>` : ''}</td></tr>`;
+            <td>${m || j.gerable ? `<div class="ligne" style="gap:4px;flex-wrap:nowrap">
+              ${m ? `<button class="btn petit" data-bloquer="${j.id}" data-actif="${j.actif}">${j.actif ? 'Bloquer' : 'Débloquer'}</button>` : ''}
+              ${j.gerable ? `<button class="btn petit" data-mdp="${j.id}" data-pseudo="${echapper(j.pseudo)}" title="Modifier le mot de passe (mot de passe temporaire)">🔑</button>
+              <button class="btn petit danger" data-supprimer="${j.id}" data-pseudo="${echapper(j.pseudo)}">Supprimer</button>` : ''}</div>` : ''}</td></tr>`;
         }).join('') || '<tr><td colspan="7" class="vide">Aucun joueur.</td></tr>';
 
         $$('[data-rang]').forEach((s) => (s.onchange = () => {
@@ -205,12 +143,13 @@
         }));
         $$('[data-role]').forEach((s) => (s.onchange = () => action(`/api/admin/joueurs/${s.dataset.role}/role`, 'PATCH', { role: s.value }, 'Rôle mis à jour.')));
         $$('[data-bloquer]').forEach((b) => (b.onclick = () => action(`/api/admin/joueurs/${b.dataset.bloquer}/actif`, 'PATCH', { actif: b.dataset.actif !== 'true' }, 'Compte mis à jour.')));
-        $$('[data-mdp]').forEach((b) => (b.onclick = () => {
-          const mdp = prompt('Nouveau mot de passe (6 caractères minimum) :');
-          if (mdp) action(`/api/admin/joueurs/${b.dataset.mdp}/mot-de-passe`, 'POST', { motDePasse: mdp }, 'Mot de passe réinitialisé.');
+        $$('[data-mdp]').forEach((b) => (b.onclick = async () => {
+          const mdp = await fenetre({ titre: `🔑 Mot de passe de ${b.dataset.pseudo}`, texte: 'Saisis un mot de passe temporaire. Le membre sera déconnecté et devra choisir son propre mot de passe à sa prochaine connexion.', champ: true, bouton: 'Enregistrer' });
+          if (mdp) action(`/api/admin/joueurs/${b.dataset.mdp}/mot-de-passe`, 'POST', { motDePasse: mdp }, `Mot de passe temporaire enregistré pour ${b.dataset.pseudo}.`);
         }));
-        $$('[data-supprimer]').forEach((b) => (b.onclick = () => {
-          if (confirm(`Supprimer définitivement le compte « ${b.dataset.pseudo} » ?`)) action(`/api/admin/joueurs/${b.dataset.supprimer}`, 'DELETE', null, 'Compte supprimé.');
+        $$('[data-supprimer]').forEach((b) => (b.onclick = async () => {
+          const ok = await fenetre({ titre: `Supprimer définitivement le compte de ${b.dataset.pseudo} ?`, texte: 'Ses parties restent dans l\'historique avec la mention « (compte supprimé) ». S\'il est désigné Conducteur ou VIP aujourd\'hui ou plus tard, la désignation passera à « Non désigné ».', bouton: 'Supprimer définitivement', danger: true });
+          if (ok) action(`/api/admin/joueurs/${b.dataset.supprimer}`, 'DELETE', null, 'Compte supprimé.');
         }));
       }
       async function action(url, methode, corps, ok) {
@@ -285,7 +224,7 @@
           || '<tr><td colspan="4" class="vide">Rien pour le moment.</td></tr>';
       }
 
-      ouvrir(location.hash.slice(1) || 'creer');
+      ouvrir(location.hash.slice(1) || 'comptes');
     })();
   </script>
 </body>

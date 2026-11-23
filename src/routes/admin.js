@@ -1,22 +1,29 @@
-/** Routes /api/admin : comptes, rangs, rôles, questions du quiz, journaux. */
+/**
+ * Routes /api/admin : comptes, rangs, rôles, questions du quiz, journaux.
+ *  - R4, R5 et admins : liste des comptes, mot de passe temporaire, suppression (règles : permissions.peutGererCompte) ;
+ *  - admins, R5, super admin : rangs, rôles, blocage, quiz ; R5 et super admin : journaux.
+ */
 const express = require('express');
 const prisma = require('../db/prisma');
 const perms = require('../services/permissions');
 const { profilPublic } = require('../services/authService');
 const { journaliser } = require('../services/journal');
-const { exigerConnexion, exigerAdmin, exigerDroitsSuperAdmin, exigerChangerRoles } = require('../middleware/auth');
+const designations = require('../services/designations');
+const { exigerConnexion, exigerAdmin, exigerOrganisateur, exigerDroitsSuperAdmin, exigerChangerRoles } = require('../middleware/auth');
 
 const RANGS = ['R1', 'R2', 'R3', 'R4', 'R5'];
 
 /** @param {() => import('socket.io').Server} obtenirIo pour déconnecter un compte bloqué en direct */
 module.exports = function routesAdmin(obtenirIo) {
   const router = express.Router();
-  router.use(exigerConnexion, exigerAdmin);
+  router.use(exigerConnexion, exigerOrganisateur); // R4, R5 et admins
 
-  async function chargerCible(req, res) {
+  /** Compte cible, s'il existe, n'est pas supprimé et que la règle `peut(auteur, cible)` est respectée. */
+  async function chargerCible(req, res, peut = perms.peutModifierCompte) {
     const cible = await prisma.joueur.findUnique({ where: { id: Number(req.params.id) } });
-    if (!cible) { res.status(404).json({ erreur: 'Joueur introuvable.' }); return null; }
-    if (!perms.peutModifierCompte(req.joueur, cible)) { res.status(403).json({ erreur: 'Tu ne peux pas modifier ce compte.' }); return null; }
+    if (!cible || cible.supprimeLe) { res.status(404).json({ erreur: 'Joueur introuvable.' }); return null; }
+    if (String(cible.id) === String(req.joueur.id)) { res.status(403).json({ erreur: 'Tu ne peux pas faire ça sur ton propre compte.' }); return null; }
+    if (!peut(req.joueur, cible)) { res.status(403).json({ erreur: 'Tu ne peux pas modifier ce compte.' }); return null; }
     return cible;
   }
   const deconnecter = (id) => obtenirIo()?.in(`joueur:${id}`).disconnectSockets(true);
@@ -27,21 +34,66 @@ module.exports = function routesAdmin(obtenirIo) {
     try {
       const q = String(req.query.q || '').trim().toLowerCase();
       const joueurs = await prisma.joueur.findMany({
-        where: q ? { pseudoNormalise: { contains: q } } : {},
+        where: { supprimeLe: null, ...(q ? { pseudoNormalise: { contains: q } } : {}) },
         orderBy: [{ rang: 'desc' }, { pseudo: 'asc' }], take: 500,
         include: { _count: { select: { partiesGagnees: true, participations: true } } },
       });
       res.json({
         // ce que l'utilisateur connecté peut proposer (affichage seulement : tout est revérifié à l'enregistrement)
-        droits: { rangs: perms.rangsPossibles(req.joueur), roles: perms.peutChangerRoles(req.joueur) },
+        droits: { rangs: perms.rangsPossibles(req.joueur), roles: perms.peutChangerRoles(req.joueur), admin: perms.estAdmin(req.joueur) },
         joueurs: joueurs.map((j) => ({
           ...profilPublic(j), derniereConnexion: j.derniereConnexion,
           victoires: j._count.partiesGagnees, parties: j._count.participations,
-          modifiable: perms.peutModifierCompte(req.joueur, j),
+          modifiable: perms.peutModifierCompte(req.joueur, j), // rang, rôle, blocage (admins)
+          gerable: perms.peutGererCompte(req.joueur, j), // mot de passe temporaire, suppression (R4, R5, admins)
         })),
       });
     } catch (e) { next(e); }
   });
+
+  /**
+   * Mot de passe temporaire : le R4 / R5 / admin le saisit, le membre devra le changer à sa prochaine connexion.
+   * Le mot de passe actuel n'est jamais affiché (seul son hash bcrypt est en base).
+   */
+  router.post('/joueurs/:id/mot-de-passe', async (req, res, next) => {
+    try {
+      const cible = await chargerCible(req, res, perms.peutGererCompte); if (!cible) return;
+      const bcrypt = require('bcryptjs');
+      const { validerMotDePasse, COUT_BCRYPT } = require('../services/authService');
+      validerMotDePasse(req.body?.motDePasse);
+      await prisma.joueur.update({
+        where: { id: cible.id }, data: { motDePasseHash: await bcrypt.hash(req.body.motDePasse, COUT_BCRYPT), doitChangerMdp: true },
+      });
+      deconnecter(cible.id);
+      await journaliser(req.joueur.id, 'mot_de_passe_temporaire', { joueur: cible.pseudo, joueurId: cible.id });
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  /**
+   * Suppression d'un compte. La ligne reste (pseudo d'origine gardé dans pseudoSupprime) : ses parties restent
+   * dans l'historique avec « (compte supprimé) » ; le pseudo est libéré ; ses désignations du jour et à venir
+   * passent à « Non désigné ».
+   */
+  router.delete('/joueurs/:id', async (req, res, next) => {
+    try {
+      const cible = await chargerCible(req, res, perms.peutGererCompte); if (!cible) return;
+      await prisma.joueur.update({
+        where: { id: cible.id },
+        data: {
+          actif: false, supprimeLe: new Date(), pseudoSupprime: cible.pseudo, doitChangerMdp: false, motDePasseHash: '!',
+          pseudo: `[supprimé #${cible.id}]`, pseudoNormalise: `[supprime-${cible.id}]`,
+        },
+      });
+      deconnecter(cible.id);
+      const retirees = await designations.retirerCompteSupprime(cible.id, req.joueur.id);
+      await journaliser(req.joueur.id, 'supprimer', { joueur: cible.pseudo, joueurId: cible.id, designationsRetirees: retirees });
+      res.json({ ok: true, designationsRetirees: retirees });
+    } catch (e) { next(e); }
+  });
+
+  // ---------------- réservé aux admins, au R5 et au super admin
+  router.use(exigerAdmin);
 
   router.patch('/joueurs/:id/rang', async (req, res, next) => {
     try {
@@ -76,39 +128,6 @@ module.exports = function routesAdmin(obtenirIo) {
       if (!actif) deconnecter(cible.id);
       await journaliser(req.joueur.id, actif ? 'debloquer' : 'bloquer', { joueur: cible.pseudo });
       res.json({ joueur: profilPublic(j) });
-    } catch (e) { next(e); }
-  });
-
-  /** Réinitialiser le mot de passe d'un joueur qui l'a oublié. */
-  router.post('/joueurs/:id/mot-de-passe', async (req, res, next) => {
-    try {
-      const cible = await chargerCible(req, res); if (!cible) return;
-      const bcrypt = require('bcryptjs');
-      const { validerMotDePasse, COUT_BCRYPT } = require('../services/authService');
-      validerMotDePasse(req.body?.motDePasse);
-      await prisma.joueur.update({ where: { id: cible.id }, data: { motDePasseHash: await bcrypt.hash(req.body.motDePasse, COUT_BCRYPT) } });
-      deconnecter(cible.id);
-      await journaliser(req.joueur.id, 'reinitialiser_mdp', { joueur: cible.pseudo });
-      res.json({ ok: true });
-    } catch (e) { next(e); }
-  });
-
-  router.delete('/joueurs/:id', async (req, res, next) => {
-    try {
-      const cible = await chargerCible(req, res); if (!cible) return;
-      // Les parties organisées/gagnées gardent une trace : on anonymise plutôt que de casser l'historique.
-      const aDesParties = await prisma.partie.count({ where: { OR: [{ organisateurId: cible.id }, { gagnantId: cible.id }] } });
-      if (aDesParties) {
-        await prisma.joueur.update({
-          where: { id: cible.id },
-          data: { actif: false, pseudo: `[supprimé #${cible.id}]`, pseudoNormalise: `[supprime-${cible.id}]`, motDePasseHash: '!' },
-        });
-      } else {
-        await prisma.joueur.delete({ where: { id: cible.id } });
-      }
-      deconnecter(cible.id);
-      await journaliser(req.joueur.id, 'supprimer', { joueur: cible.pseudo });
-      res.json({ ok: true });
     } catch (e) { next(e); }
   });
 

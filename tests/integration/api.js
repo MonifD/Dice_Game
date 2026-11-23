@@ -66,10 +66,21 @@ function verifier(nom, condition, detail = '') {
   r = await req('GET', '/api/minijeux', { jeton });
   verifier('catalogue des 16 mini-jeux', r.statut === 200 && r.json.minijeux.length >= 16, `${r.json.minijeux?.length}`);
 
+  r = await req('GET', '/api/minijeux', { jeton });
+  verifier('catégories de la page Jeux + Loup-Garou « bientôt »', r.json.categories?.length >= 2 && r.json.minijeux.every((m) => m.categorie)
+    && r.json.bientot.some((b) => b.id === 'loup-garou' && b.categorie === 'soiree'), JSON.stringify(r.json.bientot));
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'VIP', dateObjet: DEMAIN, parametres: {} } });
-  verifier('un R1 ne peut pas créer de partie (403)', r.statut === 403, `statut ${r.statut}`);
+  verifier('un membre simple ne peut pas lancer pour le VIP (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: DEMAIN, parametres: {} } });
+  verifier('un membre simple ne peut pas lancer pour le Conducteur (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'AMUSEMENT', parametres: { nombreCible: 3 } } });
+  verifier('un membre simple lance un jeu « Pour s\'amuser »', r.statut === 201, `statut ${r.statut} ${JSON.stringify(r.json)}`);
+  const partieAmusement = await prisma.partie.findUnique({ where: { code: r.json.code } });
+  verifier('« Pour s\'amuser » : pas de jour J', partieAmusement.objet === 'AMUSEMENT' && partieAmusement.dateObjet === null);
   r = await req('GET', '/api/admin/joueurs', { jeton });
   verifier('un R1 n\'a pas accès à l\'administration (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('PUT', '/api/designations', { jeton, corps: { objet: 'VIP', jour: DEMAIN, joueurId: null } });
+  verifier('un membre simple ne modifie pas les désignations (403)', r.statut === 403, `statut ${r.statut}`);
 
   await prisma.joueur.update({ where: { pseudo }, data: { rang: 'R4' } });
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'VIP', dateObjet: DEMAIN, parametres: { nombreCible: 9 } } });
@@ -84,10 +95,14 @@ function verifier(nom, condition, detail = '') {
   verifier('date du Conducteur / VIP obligatoire (400)', r.statut === 400, `statut ${r.statut}`);
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: '2026-02-30', parametres: { nombreCible: 3 } } });
   verifier('date invalide refusée (400)', r.statut === 400, `statut ${r.statut}`);
+  r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: '2020-01-01', parametres: { nombreCible: 3 } } });
+  verifier('jour J dans le passé refusé (400)', r.statut === 400, `statut ${r.statut}`);
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: DEMAIN, parametres: { nombreCible: 3 } } });
   verifier('un R4 crée une partie', r.statut === 201 && /^[A-Z0-9]{6}$/.test(r.json.code), JSON.stringify(r.json));
   r = await req('GET', '/api/admin/joueurs', { jeton });
-  verifier('un R4 n\'a toujours pas accès à l\'administration (403)', r.statut === 403);
+  verifier('un R4 voit les comptes (mot de passe temporaire, suppression)', r.statut === 200 && Array.isArray(r.json.joueurs), `statut ${r.statut}`);
+  r = await req('GET', '/api/admin/questions', { jeton });
+  verifier('un R4 (non admin) n\'a pas les questions du quiz (403)', r.statut === 403, `statut ${r.statut}`);
 
   // super admin
   r = await req('POST', '/api/auth/connexion', { corps: { pseudo: process.env.SUPER_ADMIN_PSEUDO, motDePasse: process.env.SUPER_ADMIN_MOT_DE_PASSE } });
@@ -148,6 +163,82 @@ function verifier(nom, condition, detail = '') {
   verifier('l\'ancien R5 redescend R4', (await prisma.joueur.findUnique({ where: { id: b.id } })).rang === 'R4');
   await prisma.joueur.deleteMany({ where: { id: { in: [a.id, b.id, c.id] } } });
   if (r5Existants.length) await prisma.joueur.updateMany({ where: { id: { in: r5Existants.map((x) => x.id) } }, data: { rang: 'R5' } });
+
+  // ---------------- désignations Conducteur / VIP (jour J), mot de passe temporaire, suppression
+  const designations = require('../../src/services/designations');
+  await prisma.joueur.update({ where: { id }, data: { rang: 'R4' } }); // le compte de test redevient R4 (non admin)
+  const APRES = new Date(Date.now() + 5 * 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  const membres = {};
+  for (const suffixe of ['m', 'n', 'p']) {
+    r = await req('POST', '/api/auth/inscription', { corps: { pseudo: `${pseudo}${suffixe}`, motDePasse: mdp } });
+    membres[suffixe] = { id: r.json.joueur.id, jeton: r.json.jeton, pseudo: `${pseudo}${suffixe}` };
+  }
+  const { m, n, p } = membres;
+  await designations.attribuerGagnant({ objet: 'CONDUCTEUR', jourJ: APRES, joueurId: m.id, partieId: null });
+  await designations.attribuerGagnant({ objet: 'CONDUCTEUR', jourJ: APRES, joueurId: n.id, partieId: null });
+  const lignes = await prisma.designation.findMany({ where: { objet: 'CONDUCTEUR', jour: new Date(`${APRES}T00:00:00Z`) }, orderBy: { id: 'asc' } });
+  verifier('le gagnant de la dernière partie remplace le précédent (même rôle, même jour)',
+    lignes.filter((l) => l.active).length === 1 && lignes.find((l) => l.active).joueurId === n.id, JSON.stringify(lignes));
+  r = await req('GET', '/api/designations/historique', { jeton: m.jeton });
+  const aVenir = r.json.aVenir.find((d) => d.objet === 'CONDUCTEUR' && d.jour === APRES);
+  verifier('désignation à venir visible dans l\'historique', aVenir?.joueur?.id === n.id, JSON.stringify(r.json.aVenir));
+  verifier('l\'ancienne désignation reste visible (« remplacé »)', r.json.journal.some((d) => d.joueur?.id === m.id && d.jour === APRES && d.statut === 'remplace'));
+  r = await req('GET', '/api/designations', { jeton: m.jeton });
+  verifier('une désignation future n\'apparaît pas dans les bandeaux du jour', r.json.designations.CONDUCTEUR?.joueur?.id !== n.id);
+  r = await req('PUT', '/api/designations', { jeton, corps: { objet: 'CONDUCTEUR', jour: APRES, joueurId: p.id } });
+  verifier('un R4 modifie la désignation à la main', r.statut === 200 && r.json.designation.joueur.id === p.id, JSON.stringify(r.json));
+  r = await req('GET', '/api/designations/historique', { jeton: m.jeton });
+  verifier('« modifié par … » sur la désignation remplacée à la main',
+    r.json.journal.some((d) => d.joueur?.id === n.id && d.jour === APRES && d.statut === 'modifie' && d.modifiePar === pseudo), JSON.stringify(r.json.journal.slice(0, 3)));
+  const modif = r.json.journal.find((d) => d.joueur?.id === p.id && d.jour === APRES);
+  verifier('modification manuelle : ancien nom, nouveau nom, auteur, date', modif.mode === 'MANUELLE' && modif.ancienPseudo === n.pseudo && modif.auteur === pseudo && modif.date);
+
+  // mot de passe temporaire
+  r = await req('POST', `/api/admin/joueurs/${p.id}/mot-de-passe`, { jeton, corps: { motDePasse: 'temporaire-123' } });
+  verifier('un R4 donne un mot de passe temporaire à un membre', r.statut === 200, `statut ${r.statut}`);
+  r = await req('POST', '/api/auth/connexion', { corps: { pseudo: p.pseudo, motDePasse: 'temporaire-123' } });
+  verifier('connexion avec le mot de passe temporaire', r.statut === 200 && r.json.joueur.doitChangerMdp === true, JSON.stringify(r.json.joueur));
+  const jetonP = r.json.jeton;
+  r = await req('GET', '/api/salles', { jeton: jetonP });
+  verifier('le reste du site est bloqué tant qu\'il n\'est pas changé (403 changer_mdp)', r.statut === 403 && r.json.code === 'changer_mdp', `statut ${r.statut}`);
+  r = await req('POST', '/api/auth/mot-de-passe', { jeton: jetonP, corps: { nouveau: 'temporaire-123' } });
+  verifier('le nouveau mot de passe doit être différent', r.statut === 400, `statut ${r.statut}`);
+  r = await req('POST', '/api/auth/mot-de-passe', { jeton: jetonP, corps: { nouveau: 'mon-nouveau-123' } });
+  verifier('le membre choisit son nouveau mot de passe', r.statut === 200, `statut ${r.statut}`);
+  r = await req('GET', '/api/salles', { jeton: jetonP });
+  verifier('accès rétabli après le changement', r.statut === 200, `statut ${r.statut}`);
+
+  // droits : un R4 ne touche ni un R5 ni un admin ; personne ne supprime son propre compte
+  await prisma.joueur.update({ where: { id: m.id }, data: { rang: 'R5' } });
+  r = await req('POST', `/api/admin/joueurs/${m.id}/mot-de-passe`, { jeton, corps: { motDePasse: 'temporaire-123' } });
+  verifier('un R4 ne modifie pas le mot de passe d\'un R5 (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('DELETE', `/api/admin/joueurs/${m.id}`, { jeton });
+  verifier('un R4 ne supprime pas un R5 (403)', r.statut === 403, `statut ${r.statut}`);
+  await prisma.joueur.update({ where: { id: m.id }, data: { rang: 'R3', role: 'ADMIN' } });
+  await prisma.joueur.update({ where: { id: n.id }, data: { rang: 'R5' } });
+  r = await req('DELETE', `/api/admin/joueurs/${m.id}`, { jeton: n.jeton });
+  verifier('un R5 ne supprime pas un admin (403)', r.statut === 403, `statut ${r.statut}`);
+  r = await req('DELETE', `/api/admin/joueurs/${n.id}`, { jeton: n.jeton });
+  verifier('personne ne supprime son propre compte (403)', r.statut === 403, `statut ${r.statut}`);
+  await prisma.joueur.update({ where: { id: m.id }, data: { rang: 'R1', role: 'JOUEUR' } });
+  await prisma.joueur.update({ where: { id: n.id }, data: { rang: 'R1' } });
+
+  // suppression : désignation à venir -> « Non désigné », parties gardées avec « (compte supprimé) »
+  await prisma.partie.update({ where: { id: partieAmusement.id }, data: { statut: 'TERMINEE', gagnantId: p.id, dateFin: new Date() } });
+  r = await req('DELETE', `/api/admin/joueurs/${p.id}`, { jeton });
+  verifier('un R4 supprime le compte d\'un membre', r.statut === 200 && r.json.designationsRetirees === 1, JSON.stringify(r.json));
+  r = await req('GET', '/api/designations/historique', { jeton: m.jeton });
+  verifier('sa désignation à venir passe à « Non désigné »', r.json.aVenir.some((d) => d.objet === 'CONDUCTEUR' && d.jour === APRES && d.joueur === null && d.mode === 'SUPPRESSION'));
+  r = await req('GET', '/api/historique?objet=AMUSEMENT', { jeton: m.jeton });
+  verifier('ses parties restent avec « (compte supprimé) »', r.json.parties.some((x) => x.id === partieAmusement.id && x.gagnant.pseudo === `${p.pseudo} (compte supprimé)`), JSON.stringify(r.json.parties[0]));
+  r = await req('POST', '/api/auth/connexion', { corps: { pseudo: p.pseudo, motDePasse: 'mon-nouveau-123' } });
+  verifier('un compte supprimé ne peut plus se connecter', r.statut === 401, `statut ${r.statut}`);
+  r = await req('GET', '/api/admin/journaux', { jeton: admin });
+  verifier('journal : mot de passe temporaire, suppression, désignation modifiée',
+    ['mot_de_passe_temporaire', 'supprimer', 'designation_modifiee'].every((a) => r.json.journaux.some((j) => j.action === a)));
+  await prisma.designation.deleteMany({ where: { jour: new Date(`${APRES}T00:00:00Z`), OR: [{ joueurId: { in: [m.id, n.id, p.id] } }, { joueurId: null }] } });
+  await prisma.partie.deleteMany({ where: { id: partieAmusement.id } });
+  await prisma.joueur.deleteMany({ where: { id: { in: [m.id, n.id, p.id] } } });
 
   r = await req('PATCH', `/api/admin/joueurs/${id}/actif`, { jeton: admin, corps: { actif: false } });
   verifier('blocage du compte', r.statut === 200 && r.json.joueur.actif === false);

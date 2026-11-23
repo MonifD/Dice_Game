@@ -33,10 +33,11 @@ last_war/
 │   └── seed.js                questions de quiz de départ
 ├── public/                    pages (HTML/CSS/JS sans build)
 │   ├── index.html             connexion / inscription
-│   ├── accueil.html           parties ouvertes, mes victoires
+│   ├── accueil.html           bandeaux Conducteur / VIP du jour, parties ouvertes, mes victoires
+│   ├── jeux.html              catégories de jeux, lancement d'une partie (objet, jour J, paramètres)
 │   ├── salle.html             salle de jeu (attente, tour, résultats, gagnant)
-│   ├── historique.html        historique + classement
-│   ├── admin.html             création de partie, comptes & rangs, quiz, journaux
+│   ├── historique.html        désignations à venir (+ modification), parties, journal des désignations, classement
+│   ├── admin.html             comptes (mot de passe temporaire, suppression), rangs, quiz, journaux
 │   ├── css/style.css
 │   └── js/ commun.js (API, session, socket) · salle.js (moteur d'affichage) · ui-jeux.js (composants) · chat.js
 ├── src/
@@ -46,7 +47,7 @@ last_war/
 │   ├── db/  prisma.js · stockage.js (Redis ou mémoire + verrous)
 │   ├── middleware/auth.js     connexion obligatoire, droits
 │   ├── routes/  auth.js · parties.js · admin.js
-│   ├── services/ authService.js · permissions.js · journal.js · chatService.js
+│   ├── services/ authService.js · permissions.js · journal.js · chatService.js · jour.js (jour de jeu, 3h) · designations.js
 │   ├── socket/index.js        événements temps réel
 │   ├── moteur/
 │   │   ├── moteur.js          ★ moteur de partie commun
@@ -55,10 +56,11 @@ last_war/
 │   │   └── outils.js          rng sécurisé, ErreurJeu, garderMeilleurs()
 │   └── minijeux/
 │       ├── index.js           registre (charge automatiquement chaque dossier)
+│       ├── categories.js      catégories de la page Jeux + cartes « Bientôt disponible »
 │       └── <id>/serveur.js + client.js   un dossier par mini-jeu (serveur.js contient aussi regles(params), affichées en salle d'attente)
 ├── scripts/ci/                version.js (calcul de version) · attendre-calme.js · verifier-prod.js
 ├── docs/CICD.md               mode d'emploi de la pipeline
-└── tests/  minijeux.test.js (unitaires) · integration/ (API, droits, chat)
+└── tests/  minijeux.test.js · permissions.test.js · jour.test.js (unitaires) · integration/ (API, droits, désignations, chat)
             charge.js + strategies.js (100 joueurs simulés) · nettoyer-bots.js
 ```
 
@@ -66,8 +68,9 @@ last_war/
 
 | Table | Champs principaux |
 |---|---|
-| `joueurs` | pseudo (unique), pseudoNormalise (unique, insensible à la casse), motDePasseHash (bcrypt), rang R1–R5 (R1 par défaut), rôle JOUEUR/ADMIN/SUPER_ADMIN, actif, dateInscription, derniereConnexion |
-| `parties` | code de salle, miniJeu, **objet** (CONDUCTEUR / VIP du train) + **dateObjet** (jour où le gagnant l’exerce) — vides pour les anciennes parties, parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
+| `joueurs` | pseudo (unique), pseudoNormalise (unique, insensible à la casse), motDePasseHash (bcrypt), rang R1–R5 (R1 par défaut), rôle JOUEUR/ADMIN/SUPER_ADMIN, actif, dateInscription, derniereConnexion, **doitChangerMdp** (mot de passe temporaire), **supprimeLe** + **pseudoSupprime** (compte supprimé : la ligne reste pour l'historique, le pseudo est libéré) |
+| `parties` | code de salle, miniJeu, **objet** (CONDUCTEUR / VIP du train / AMUSEMENT « Pour s'amuser ») + **dateObjet** (jour J ; vide pour « Pour s'amuser » et les anciennes parties), parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
+| `designations` | objet (CONDUCTEUR / VIP), jour, joueur (vide = « Non désigné »), mode PARTIE / MANUELLE / SUPPRESSION, partie, auteur, ancienPseudo, **active**, remplaceeLe — une ligne par changement ; la ligne active d'un (objet, jour) est la désignation en vigueur |
 | `participations` | joueur, partie, tourAtteint, positionFinale (1 = gagnant, ex aequo partagés) |
 | `questions_quiz` | catégorie, question, choix[], bonneReponse, active |
 | `journaux` | date, auteur, action, détails (rangs, blocages, suppressions…) |
@@ -77,8 +80,11 @@ last_war/
 | | R1–R3 | R4 | Admin | R4 admin | R5 (un seul) | Super admin |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | Jouer, regarder | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Créer / lancer / faire avancer / arrêter une partie | | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Rangs R1–R4, bloquer, supprimer, mot de passe oublié, quiz, muet | | | ✅ | ✅ | ✅ | ✅ |
+| Lancer un jeu « Pour s'amuser » et mener **sa** salle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Lancer pour le Conducteur / VIP, mener toutes les salles | | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Modifier / retirer un Conducteur ou un VIP à la main | | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Mot de passe temporaire, supprimer un compte (voir ci-dessous) | | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Rangs R1–R4, bloquer, quiz, muet | | | ✅ | ✅ | ✅ | ✅ |
 | Nommer / retirer des admins | | | | ✅ | ✅ | ✅ |
 | Donner le rang R5, journaux | | | | | ✅ | ✅ |
 
@@ -88,6 +94,25 @@ donner un niveau supérieur au sien. Personne ne peut modifier le super admin. *
 (un admin descendu R1/R2 perd le rôle). **Un seul R5** (hors super admin) :
 donner R5 est une passation, l'ancien R5 redescend R4 (journal `passation_r5`). Un compte bloqué est déconnecté
 immédiatement.
+
+**Mot de passe temporaire et suppression de compte** (`peutGererCompte`) suivent leur propre ordre :
+super admin > admin > R5 > R4 > membres, toujours sur un compte strictement inférieur et jamais le sien
+(un R4 ne touche ni un R5 ni un admin, un R5 ne touche pas un admin). Le membre qui reçoit un mot de passe
+temporaire doit le changer avant d'accéder au reste du site (HTTP 403 `changer_mdp`, connexion temps réel refusée).
+Journal : `mot_de_passe_temporaire`, `supprimer`, `designation_modifiee`, `designation_retiree`.
+
+## Objet de la partie et désignations Conducteur / VIP
+
+* **Jour de jeu** : un jour commence à **3h00 du matin, heure de Paris**, et finit le lendemain à 2h59
+  (`src/services/jour.js`, miroir `LW.aujourdhui()`).
+* Au lancement : Conducteur ou VIP + **date du jour J** (aujourd'hui par défaut, jamais passée), ou « Pour s'amuser »
+  (aucune désignation, celles enregistrées restent inchangées). Un jeu peut limiter ses objets (`objets: ['AMUSEMENT']`).
+* Fin de partie Conducteur / VIP : le gagnant devient la désignation active du (rôle, jour J) et **remplace** la
+  précédente (verrou PostgreSQL par rôle et jour). Les anciennes lignes restent : « remplacé », « modifié par … ».
+* Bandeaux de l'accueil : la désignation active **du jour en cours** seulement, sinon « Non désigné ».
+* Compte supprimé : ses désignations du jour et à venir passent à « Non désigné » (mode SUPPRESSION).
+* Code : `src/services/designations.js` ; API `GET /api/designations` (jour en cours), `GET /api/designations/historique`
+  (à venir + journal), `PUT /api/designations` (R4 / R5 / admins, `joueurId: null` pour retirer).
 
 ## Échanges Socket.IO
 
@@ -100,12 +125,12 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `salle:inscrire` | `{ code }` | tous | s'inscrit en salle d'attente (refusé une fois lancée) |
 | `salle:quitter` | `{ code }` | inscrit | quitte la salle d'attente |
 | `salle:pret` | `{ code, pret }` | inscrit | se déclare prêt / plus prêt (la partie ne se lance que si tous les inscrits sont prêts) |
-| `salle:alerter` | `{ code }` | R4/R5/admin | fait sonner l'alerte « la partie va commencer » chez tous (1 fois / 10 s) |
-| `salle:exclure` | `{ code, joueurId }` | R4/R5/admin | retire quelqu'un **de pas prêt** de la salle d'attente |
-| `salle:lancer` | `{ code }` | R4/R5/admin | lance la partie (≥ 2 joueurs, tous prêts) |
-| `salle:suivant` | `{ code }` | R4/R5/admin | termine le tour en cours, ou lance le suivant |
-| `salle:arreter` | `{ code }` | R4/R5/admin | arrête la partie (enregistrée sans gagnant) |
-| `jeu:orga` | `{ code, donnees }` | R4/R5/admin | réglage du mini-jeu pour le prochain tour, en salle d'attente ou entre deux tours (ex. options A / B de la minorité) |
+| `salle:alerter` | `{ code }` | organisateur, R4/R5/admin | fait sonner l'alerte « la partie va commencer » chez tous (1 fois / 10 s) |
+| `salle:exclure` | `{ code, joueurId }` | organisateur, R4/R5/admin | retire quelqu'un **de pas prêt** de la salle d'attente |
+| `salle:lancer` | `{ code }` | organisateur, R4/R5/admin | lance la partie (≥ 2 joueurs, tous prêts) |
+| `salle:suivant` | `{ code }` | organisateur, R4/R5/admin | termine le tour en cours, ou lance le suivant |
+| `salle:arreter` | `{ code }` | organisateur, R4/R5/admin | arrête la partie (enregistrée sans gagnant) |
+| `jeu:orga` | `{ code, donnees }` | organisateur, R4/R5/admin | réglage du mini-jeu pour le prochain tour, en salle d'attente ou entre deux tours (ex. options A / B de la minorité) |
 | `jeu:action` | `{ code, donnees }` | joueur en jeu | joue son coup (une seule action par tour, sauf jeux de clics) |
 | `accueil:suivre` | – | tous | reçoit `salles:maj` quand la liste change |
 | `chat:rejoindre` | `{ canal }` | tous | `general` ou `salle:<code>` ; renvoie les 100 derniers messages |
@@ -190,3 +215,7 @@ et le nombre de parties en cours (la pipeline ne déploie pas pendant une partie
 
 Créer `src/minijeux/mon-jeu/serveur.js` et `client.js` — rien d'autre à modifier. Interface détaillée en tête de
 `src/minijeux/index.js` ; le plus simple est de copier `pile-ou-face/`.
+
+Page **Jeux** : un jeu va dans « Jeux rapides » par défaut ; `categorie: 'soiree'` le range dans « Jeux de soirée ».
+Les catégories et les cartes « Bientôt disponible » (ex. Loup-Garou) sont dans `src/minijeux/categories.js` ;
+une carte « bientôt » disparaît d'elle-même dès que le dossier du jeu existe.

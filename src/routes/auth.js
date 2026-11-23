@@ -3,7 +3,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const config = require('../config');
 const auth = require('../services/authService');
-const { exigerConnexion } = require('../middleware/auth');
+const { exigerConnexionMdpTemporaire } = require('../middleware/auth');
 const { journaliser } = require('../services/journal');
 
 const router = express.Router();
@@ -55,21 +55,30 @@ router.post('/deconnexion', (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/moi', exigerConnexion, (req, res) => {
+router.get('/moi', exigerConnexionMdpTemporaire, (req, res) => {
   res.json({ joueur: auth.profilPublic(req.joueur), jeton: auth.creerJeton(req.joueur, '1h') });
 });
 
-/** Changer son mot de passe. */
-router.post('/mot-de-passe', exigerConnexion, limiteParIp, async (req, res, next) => {
+/**
+ * Changer son mot de passe. Après un mot de passe temporaire (donné par un R4 / R5 / admin), l'ancien n'est pas
+ * redemandé (le membre vient de se connecter avec), mais le nouveau doit être différent.
+ */
+router.post('/mot-de-passe', exigerConnexionMdpTemporaire, limiteParIp, async (req, res, next) => {
   try {
     const bcrypt = require('bcryptjs');
     const prisma = require('../db/prisma');
     const { ancien, nouveau } = req.body || {};
-    if (!(await bcrypt.compare(String(ancien || ''), req.joueur.motDePasseHash))) {
+    if (!req.joueur.doitChangerMdp && !(await bcrypt.compare(String(ancien || ''), req.joueur.motDePasseHash))) {
       return res.status(400).json({ erreur: 'Ancien mot de passe incorrect.' });
     }
     auth.validerMotDePasse(nouveau);
-    await prisma.joueur.update({ where: { id: req.joueur.id }, data: { motDePasseHash: await bcrypt.hash(nouveau, auth.COUT_BCRYPT) } });
+    if (await bcrypt.compare(nouveau, req.joueur.motDePasseHash)) {
+      return res.status(400).json({ erreur: 'Choisis un mot de passe différent de l\'actuel.' });
+    }
+    await prisma.joueur.update({
+      where: { id: req.joueur.id }, data: { motDePasseHash: await bcrypt.hash(nouveau, auth.COUT_BCRYPT), doitChangerMdp: false },
+    });
+    if (req.joueur.doitChangerMdp) await journaliser(req.joueur.id, 'mot_de_passe_change', { joueur: req.joueur.pseudo });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

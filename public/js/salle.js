@@ -109,7 +109,8 @@
   const monJoueur = () => etat?.joueurs.find((j) => j.id === String(moi.id));
   const nbPrets = () => etat.joueurs.filter((j) => j.pret).length;
   const pseudo = (id) => etat?.joueurs.find((j) => j.id === String(id))?.pseudo || '?';
-  const organisateur = LW.peutOrganiser(moi);
+  /** Je mène cette salle : j'en suis l'organisateur, ou je suis R4 / R5 / admin. */
+  const meneur = () => LW.peutMenerSalle(moi, etat);
 
   async function chargerModule(id) {
     if (!LW.miniJeux[id]) await LW.chargerScript(`/minijeux/${id}/client.js`);
@@ -142,7 +143,7 @@
     const ancienne = etat?.phase;
     etat = nouvel;
     if (etat.phase === 'tour') await chargerModule(etat.jeuActif.id);
-    else if (etat.phase === 'attente' && organisateur) await chargerModule(etat.miniJeu.id); // réglages éventuels du mini-jeu
+    else if (etat.phase === 'attente' && meneur()) await chargerModule(etat.miniJeu.id); // réglages éventuels du mini-jeu
     else if (etat.phase === 'resultats' && etat.dernierResultat) await chargerModule(etat.dernierResultat.departage ? '_departage' : etat.miniJeu.id);
     if (!premier && ancienne !== etat.phase && etat.phase === 'termine' && etat.gagnant?.id === String(moi.id)) toast('🏆 Tu as gagné !', 'ok');
     if (!premier && ancienne === 'attente' && etat.phase === 'tour' && monJoueur()) LW.son.depart();
@@ -294,7 +295,7 @@
       let val = '';
       if (etat.phase === 'attente') {
         val = j.pret ? '<span class="pret-oui">✅ prêt</span>' : '<span class="pret-non">⏳ pas prêt</span>';
-        if (organisateur && !j.pret && j.id !== String(moi.id)) val += `<button class="btn-exclure" title="Exclure de la salle" data-exclure="${j.id}" data-pseudo="${echapper(j.pseudo)}">✕</button>`;
+        if (meneur() && !j.pret && j.id !== String(moi.id)) val += `<button class="btn-exclure" title="Exclure de la salle" data-exclure="${j.id}" data-pseudo="${echapper(j.pseudo)}">✕</button>`;
       }
       else if (a) val = a.public != null && mod?.formater ? echapper(mod.formater(a.public, a)) : a.fini ? '✓' : '…';
       else if (j.statut === 'elimine') val = `<span class="muet petit">T${j.tourElimination}</span>`;
@@ -304,8 +305,8 @@
   }
 
   function rendreOrga() {
-    $('#orga').classList.toggle('cache', !organisateur || etat.phase === 'termine');
-    if (!organisateur) return;
+    $('#orga').classList.toggle('cache', !meneur() || etat.phase === 'termine');
+    if (!meneur()) return;
     const b = [];
     let aide = '';
     if (etat.phase === 'attente') {

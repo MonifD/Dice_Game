@@ -51,3 +51,33 @@ test('un R1 ou un R2 ne peut pas être admin', () => {
 test('personne ne se modifie soi-même', () => {
   for (const j of [SA, R5, R4A, A]) assert.ok(!p.peutModifierCompte(j, j));
 });
+
+// ---------------------------------------------------------------- page Jeux, désignations, gestion des comptes
+const R5A = { id: 20, role: 'ADMIN', rang: 'R5' };
+const R4b = { id: 21, role: 'JOUEUR', rang: 'R4' };
+
+test('lancer un jeu : tout membre en « Pour s\'amuser », Conducteur / VIP réservés aux R4, R5, admins', () => {
+  for (const objet of ['AMUSEMENT']) assert.ok([J, J3, R4, A, R5, SA].every((x) => p.peutLancerObjet(x, objet)));
+  for (const objet of ['CONDUCTEUR', 'VIP']) {
+    assert.ok([R4, A, R4A, R5, SA].every((x) => p.peutLancerObjet(x, objet)));
+    assert.ok(![J, J3].some((x) => p.peutLancerObjet(x, objet)), 'pas les membres simples');
+  }
+  assert.ok(!p.peutLancerObjet({ ...J, actif: false }, 'AMUSEMENT'), 'pas un compte bloqué');
+});
+
+test('mener une salle : son organisateur, ou un R4 / R5 / admin', () => {
+  assert.ok(p.peutMenerSalle(J, J.id) && p.peutMenerSalle(J, String(J.id)));
+  assert.ok(!p.peutMenerSalle(J, J3.id), 'pas la salle d\'un autre');
+  assert.ok(p.peutMenerSalle(R4, J.id) && p.peutMenerSalle(A, J.id));
+});
+
+test('mot de passe temporaire et suppression : R4 < R5 < admin < super admin', () => {
+  assert.ok(p.peutGererCompte(R4, J) && p.peutGererCompte(R4, J3));
+  assert.ok(!p.peutGererCompte(R4, R5) && !p.peutGererCompte(R4, A) && !p.peutGererCompte(R4, R4b), 'un R4 ne touche ni un R5, ni un admin, ni un autre R4');
+  assert.ok(p.peutGererCompte(R5, R4) && p.peutGererCompte(R5, J));
+  assert.ok(!p.peutGererCompte(R5, A) && !p.peutGererCompte(R5, R4A) && !p.peutGererCompte(R5, R5A), 'un R5 ne touche pas un admin');
+  assert.ok(p.peutGererCompte(A, R5) && p.peutGererCompte(A, R4) && !p.peutGererCompte(A, R4A), 'un admin touche R5 et R4, pas un autre admin');
+  assert.ok(p.peutGererCompte(SA, R5A) && !p.peutGererCompte(R5A, SA));
+  assert.ok([J, R4, R5, A, SA].every((x) => !p.peutGererCompte(x, x)), 'jamais son propre compte');
+  assert.ok(!p.peutGererCompte(J3, J), 'un membre simple ne gère pas de compte');
+});

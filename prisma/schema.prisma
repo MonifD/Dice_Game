@@ -42,6 +42,14 @@ enum StatutPartie {
 enum ObjetPartie {
   CONDUCTEUR // conducteur du train
   VIP // VIP du train
+  AMUSEMENT // « Pour s'amuser » : aucune désignation
+}
+
+/// Origine d'une ligne de désignation Conducteur / VIP
+enum ModeDesignation {
+  PARTIE // gagnant d'une partie
+  MANUELLE // modifiée / retirée à la main par un R4, R5 ou admin
+  SUPPRESSION // compte supprimé : la désignation passe à « Non désigné »
 }
 
 /// Table « joueurs »
@@ -55,10 +63,14 @@ model Joueur {
   actif            Boolean         @default(true) // false = compte bloqué
   dateInscription  DateTime        @default(now())
   derniereConnexion DateTime?
+  doitChangerMdp   Boolean         @default(false) // mot de passe temporaire donné par un R4 / R5 / admin
+  supprimeLe       DateTime? // compte supprimé : la ligne reste pour l'historique
+  pseudoSupprime   String? // pseudo d'origine d'un compte supprimé (le pseudo est libéré)
 
   partiesOrganisees Partie[]        @relation("Organisateur")
   partiesGagnees    Partie[]        @relation("Gagnant")
   participations    Participation[]
+  designations      Designation[]   @relation("Designe")
 
   @@map("joueurs")
 }
@@ -68,8 +80,8 @@ model Partie {
   id               Int             @id @default(autoincrement())
   code             String          @unique // identifiant court de la salle (ex. « K7Q2PX »)
   miniJeu          String // identifiant du module (ex. « des »)
-  objet            ObjetPartie? // Conducteur ou VIP du train (vide pour les parties d'avant)
-  dateObjet        DateTime?    @db.Date // jour où le gagnant sera Conducteur / VIP
+  objet            ObjetPartie? // Conducteur, VIP du train ou « Pour s'amuser » (vide pour les parties d'avant)
+  dateObjet        DateTime?    @db.Date // jour J où le gagnant sera Conducteur / VIP (vide pour « Pour s'amuser »)
   parametres       Json
   statut           StatutPartie    @default(ATTENTE)
   dateCreation     DateTime        @default(now())
@@ -88,6 +100,27 @@ model Partie {
   @@index([dateCreation])
   @@index([objet, statut, dateObjet])
   @@map("parties")
+}
+
+/// Désignations Conducteur / VIP par jour (une ligne par changement).
+/// La ligne « active » d'un (objet, jour) est la désignation en vigueur ; joueurId vide = « Non désigné ».
+model Designation {
+  id           Int             @id @default(autoincrement())
+  objet        ObjetPartie // CONDUCTEUR ou VIP
+  jour         DateTime        @db.Date // jour J (un jour commence à 3h00, heure de Paris)
+  joueurId     Int?
+  joueur       Joueur?         @relation("Designe", fields: [joueurId], references: [id], onDelete: SetNull)
+  mode         ModeDesignation
+  partieId     Int? // partie gagnée (mode PARTIE)
+  auteurId     Int? // qui a fait la modification (mode MANUELLE / SUPPRESSION)
+  ancienPseudo String? // personne désignée avant ce changement
+  active       Boolean         @default(true)
+  creeLe       DateTime        @default(now())
+  remplaceeLe  DateTime?
+
+  @@index([objet, jour, active])
+  @@index([jour])
+  @@map("designations")
 }
 
 /// Table « participations »

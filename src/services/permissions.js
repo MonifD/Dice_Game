@@ -36,8 +36,40 @@ const aDroitsSuperAdmin = (j) => niveau(j) >= 3;
 /** Peut nommer / retirer des admins : R4 admin, R5, super admin. */
 const peutChangerRoles = (j) => niveau(j) >= 2;
 
-/** Peut créer / lancer / arrêter des parties. */
+/**
+ * R4, R5 et admins : lancer un jeu pour le Conducteur / VIP, mener toutes les salles,
+ * modifier les désignations, gérer les comptes des membres (mot de passe temporaire, suppression).
+ */
 const peutOrganiser = (j) => !!j && j.actif !== false && (estAdmin(j) || j.rang === 'R4' || j.rang === 'R5');
+
+/** Tout membre connecté peut lancer un jeu « Pour s'amuser » ; Conducteur / VIP : R4, R5 et admins. */
+const peutLancerObjet = (j, objet) => !!j && j.actif !== false && (objet === 'AMUSEMENT' || peutOrganiser(j));
+
+/** Mener une salle (lancer, tour suivant, arrêter…) : son organisateur, ou un R4 / R5 / admin. */
+const peutMenerSalle = (j, organisateurId) => !!j && j.actif !== false && (peutOrganiser(j) || String(j.id) === String(organisateurId));
+
+/** Modifier / retirer un Conducteur ou un VIP à la main. */
+const peutModifierDesignations = (j) => peutOrganiser(j);
+
+/**
+ * Ordre propre au mot de passe temporaire et à la suppression de compte :
+ * super admin (4) > admin (3) > R5 (2) > R4 (1) > membres (0).
+ * Un R4 ne touche ni un R5 ni un admin ; un R5 ne touche pas un admin.
+ */
+function niveauComptes(j) {
+  if (!j) return 0;
+  if (estSuperAdmin(j)) return 4;
+  if (j.role === 'ADMIN' && peutEtreAdmin(j.rang)) return 3;
+  if (j.rang === 'R5') return 2;
+  if (j.rang === 'R4') return 1;
+  return 0;
+}
+
+/** L'auteur peut-il donner un mot de passe temporaire à la cible / supprimer son compte ? (jamais le sien) */
+function peutGererCompte(auteur, cible) {
+  if (!auteur || !cible || String(auteur.id) === String(cible.id) || auteur.actif === false) return false;
+  return peutOrganiser(auteur) && niveauComptes(cible) < niveauComptes(auteur);
+}
 
 /** Peut gérer les comptes (rangs, blocage, suppression) et les questions du quiz. */
 const peutGererComptes = (j) => estAdmin(j);
@@ -68,4 +100,5 @@ const rangsPossibles = (auteur) => (aDroitsSuperAdmin(auteur) ? ['R1', 'R2', 'R3
 module.exports = {
   niveau, estSuperAdmin, estR5, peutEtreAdmin, estAdmin, aDroitsSuperAdmin, peutChangerRoles,
   peutOrganiser, peutGererComptes, peutModifierCompte, refusChangement, rangsPossibles,
+  peutLancerObjet, peutMenerSalle, peutModifierDesignations, niveauComptes, peutGererCompte,
 };

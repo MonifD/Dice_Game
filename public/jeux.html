@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/img/favicon-192.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>UPX Arène — Jeux</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    @media (max-width: 560px) {
+      .jeux { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .jeu-carte { align-items: center; padding: 10px; gap: 8px; font-size: .9rem; }
+      .jeu-carte:not(.bientot) p { display: none; } /* la description s'affiche dans « 2. Paramètres » */
+      .jeu-carte .ic { font-size: 24px; }
+      .choix-objet span { padding: 12px 6px; font-size: .9rem; }
+    }
+    .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 16px; }
+    .case { display: flex; align-items: center; gap: 10px; }
+    .case label { margin: 0; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>Jeux</h1>
+    <p class="muet" id="intro"></p>
+
+    <div class="onglets" id="onglets"></div>
+    <div id="categories"><div class="panneau vide">Chargement…</div></div>
+
+    <form class="panneau cache" id="form-partie" style="margin-top:16px">
+      <h2 id="titre-params">Paramètres</h2>
+      <p class="muet" id="desc-jeu"></p>
+      <div class="champ">
+        <label>Objet de la partie <span class="muet petit">(obligatoire)</span></label>
+        <div class="choix-objet" id="choix-objet"></div>
+        <div class="aide" id="aide-objet"></div>
+      </div>
+      <div class="champ cache" id="champ-date">
+        <label for="date-objet">Date du jour J <span class="muet petit">(le jour où le gagnant sera Conducteur / VIP — un jour commence à 3h00)</span></label>
+        <input type="date" id="date-objet" style="max-width:220px">
+        <div class="aide" id="aide-date"></div>
+      </div>
+      <div class="params" id="params"></div>
+      <button class="btn principal geant" style="width:100%;margin-top:8px">Créer la salle d'attente</button>
+    </form>
+  </main>
+
+  <script src="/js/commun.js"></script>
+  <script>
+    (async () => {
+      const { $, $$, echapper, api, toast } = LW;
+      const moi = await LW.session();
+      LW.barre('jeux');
+      // R4, R5 et admins : les 3 objets ; membres : « Pour s'amuser » uniquement (le serveur vérifie aussi)
+      const responsable = LW.peutOrganiser(moi);
+      $('#intro').textContent = responsable
+        ? 'Choisis un jeu puis l\'objet de la partie : Conducteur du train, VIP du train ou Pour s\'amuser.'
+        : 'Choisis un jeu pour lancer une partie « Pour s\'amuser ». Les parties pour le Conducteur ou le VIP sont lancées par les R4, R5 et admins.';
+
+      // ------------------------------------------------ catalogue par catégorie
+      const { minijeux, categories, bientot } = await api('/api/minijeux');
+      let jeuChoisi = null;
+      const carte = (j) => j.bientot
+        ? `<div class="jeu-carte bientot" aria-disabled="true"><span class="ic">${j.icone}</span><span><b>${echapper(j.nom)}</b><p>${echapper(j.description)}</p><span class="badge">⏳ Bientôt disponible</span></span></div>`
+        : `<button type="button" class="jeu-carte" data-id="${j.id}"><span class="ic">${j.icone}</span><span><b>${echapper(j.nom)}</b><p>${echapper(j.description)}</p></span></button>`;
+      const jeuxDe = (id) => [...minijeux.filter((j) => j.categorie === id), ...bientot.filter((b) => b.categorie === id)];
+      // onglets en haut de page (comme l'administration) : une catégorie affichée à la fois
+      $('#onglets').innerHTML = categories.map((c) => `<button data-onglet="${c.id}">${c.icone} ${echapper(c.nom)} <span class="badge">${jeuxDe(c.id).filter((j) => !j.bientot).length}</span></button>`).join('');
+      $('#categories').innerHTML = categories.map((c) => {
+        const jeux = jeuxDe(c.id);
+        return `<section class="panneau categorie-jeux cache" data-categorie="${c.id}">
+          <p class="muet petit" style="margin-top:0">${echapper(c.description)}</p>
+          <div class="jeux">${jeux.map(carte).join('') || '<div class="vide">Aucun jeu pour l\'instant.</div>'}</div>
+        </section>`;
+      }).join('');
+      $$('.jeu-carte[data-id]').forEach((b) => (b.onclick = () => choisirJeu(b.dataset.id)));
+
+      /** Affiche une catégorie ; le formulaire reste visible seulement si le jeu choisi en fait partie. */
+      function ouvrirCategorie(id) {
+        if (!categories.some((c) => c.id === id)) id = categories[0].id;
+        $$('#onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.onglet === id));
+        $$('.categorie-jeux').forEach((sec) => sec.classList.toggle('cache', sec.dataset.categorie !== id));
+        $('#form-partie').classList.toggle('cache', !jeuChoisi || jeuChoisi.categorie !== id);
+        history.replaceState(null, '', `#${id}`);
+      }
+      $$('#onglets button').forEach((b) => (b.onclick = () => ouvrirCategorie(b.dataset.onglet)));
+
+      // ------------------------------------------------ paramètres
+      function champParam(p) {
+        const id = `p-${p.cle}`;
+        if (p.type === 'booleen') return `<div class="champ case"><input type="checkbox" id="${id}" ${p.defaut ? 'checked' : ''}><label for="${id}">${echapper(p.libelle)}</label></div>`;
+        if (p.type === 'choix') return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><select id="${id}">${p.options.map((o) =>
+          `<option value="${echapper(o.valeur)}" ${String(o.valeur) === String(p.defaut) ? 'selected' : ''}>${echapper(o.libelle)}</option>`).join('')}</select>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
+        if (p.type === 'nombre') return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><input type="number" id="${id}" value="${p.defaut}" ${p.min !== undefined ? `min="${p.min}"` : ''} ${p.max !== undefined ? `max="${p.max}"` : ''} step="${p.pas || 1}">${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
+        if (p.multiligne) return `<div class="champ" style="grid-column:1/-1"><label for="${id}">${echapper(p.libelle)}</label><textarea id="${id}" rows="5" maxlength="${p.max || 2000}" placeholder="${echapper(p.placeholder || '')}" style="width:100%;resize:vertical">${echapper(p.defaut ?? '')}</textarea>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
+        return `<div class="champ"><label for="${id}">${echapper(p.libelle)}</label><input id="${id}" value="${echapper(p.defaut ?? '')}" ${p.max ? `maxlength="${p.max}"` : ''}>${p.aide ? `<div class="aide">${echapper(p.aide)}</div>` : ''}</div>`;
+      }
+
+      /** Objets proposés pour ce jeu et ce joueur. */
+      const objetsPossibles = (jeu) => ['CONDUCTEUR', 'VIP', 'AMUSEMENT']
+        .filter((o) => !jeu.objets || jeu.objets.includes(o))
+        .filter((o) => o === 'AMUSEMENT' || responsable);
+
+      function afficherObjets() {
+        const possibles = objetsPossibles(jeuChoisi);
+        const precedent = document.querySelector('input[name="objet"]:checked')?.value;
+        $('#choix-objet').innerHTML = possibles.map((o) => `<label><input type="radio" name="objet" value="${o}" required ${
+          possibles.length === 1 || o === precedent ? 'checked' : ''}><span>${LW.objets[o].icone} ${LW.objets[o].long}</span></label>`).join('');
+        $('#aide-objet').textContent = possibles.length === 1
+          ? (jeuChoisi.objets ? `${jeuChoisi.nom} se joue toujours « Pour s'amuser ».` : 'En tant que membre, tu peux lancer des parties « Pour s\'amuser ».')
+          : '« Pour s\'amuser » : aucun Conducteur ni VIP n\'est désigné, les désignations déjà enregistrées restent inchangées.';
+        $$('input[name="objet"]').forEach((r) => (r.onchange = majDate));
+        majDate();
+      }
+      function majDate() {
+        const objet = document.querySelector('input[name="objet"]:checked')?.value;
+        const avecDate = LW.objetsDesignation.includes(objet);
+        $('#champ-date').classList.toggle('cache', !avecDate);
+        $('#date-objet').required = avecDate;
+        if (avecDate) {
+          const auj = LW.aujourdhui();
+          $('#date-objet').min = auj;
+          if (!$('#date-objet').value || $('#date-objet').value < auj) $('#date-objet').value = auj;
+          $('#aide-date').textContent = `Si quelqu'un est déjà ${LW.objets[objet].court} ce jour-là, le gagnant de cette partie le remplacera.`;
+        }
+      }
+
+      function choisirJeu(id) {
+        jeuChoisi = minijeux.find((j) => j.id === id);
+        $$('.jeu-carte[data-id]').forEach((b) => b.classList.toggle('choisi', b.dataset.id === id));
+        $('#form-partie').classList.remove('cache');
+        $('#titre-params').textContent = `Paramètres — ${jeuChoisi.icone} ${jeuChoisi.nom}`;
+        $('#desc-jeu').textContent = jeuChoisi.description;
+        afficherObjets();
+        const propres = jeuChoisi.parametres.filter((p) => !p.commun);
+        const communs = jeuChoisi.parametres.filter((p) => p.commun);
+        $('#params').innerHTML = propres.map(champParam).join('') + communs.map(champParam).join('');
+        $('#form-partie').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      $('#form-partie').onsubmit = async (e) => {
+        e.preventDefault();
+        const parametres = {};
+        for (const p of jeuChoisi.parametres) {
+          const el = $(`#p-${p.cle}`);
+          parametres[p.cle] = p.type === 'booleen' ? el.checked : el.value;
+        }
+        const objet = document.querySelector('input[name="objet"]:checked')?.value;
+        if (!objet) { toast('Choisis l\'objet de la partie.', 'erreur'); return; }
+        const corps = { miniJeu: jeuChoisi.id, objet, parametres };
+        if (LW.objetsDesignation.includes(objet)) {
+          corps.dateObjet = $('#date-objet').value;
+          if (!corps.dateObjet) { toast('Choisis la date du jour J.', 'erreur'); return; }
+        }
+        try {
+          const { code } = await api('/api/salles', { methode: 'POST', corps });
+          location.href = `/salle?code=${code}`;
+        } catch (err) { toast(err.message, 'erreur'); }
+      };
+
+      // lien direct : /jeux#soiree (catégorie) ou /jeux#des (jeu)
+      const ancre = location.hash.slice(1);
+      const jeuAncre = minijeux.find((j) => j.id === ancre);
+      ouvrirCategorie(jeuAncre ? jeuAncre.categorie : ancre);
+      if (jeuAncre) choisirJeu(jeuAncre.id);
+    })();
+  </script>
+</body>
+</html>

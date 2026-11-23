@@ -14,6 +14,8 @@
  *  parametres: [{ cle, libelle, type: 'nombre'|'choix'|'booleen'|'texte', min, max, defaut, options }]
  *  dureeTourDefaut  (s)               durée par défaut d'un tour (paramètre commun « dureeTour »)
  *  actionRequise    (défaut true)     false = tour automatique (ex. roue) : personne n'est éliminé pour absence
+ *  categorie        (défaut 'rapide') catégorie de la page Jeux : 'rapide' ou 'soiree' (voir categories.js)
+ *  objets           (optionnel)       objets autorisés, ex. ['AMUSEMENT'] = « Pour s'amuser » uniquement
  *
  *  async initialiser({ params, joueurs, rng, outils })            -> etat
  *  async debutTour({ etat, tour, essai, enJeu, params, rng })      -> { etat, public?, evenements?, dureeMs? }
@@ -66,6 +68,8 @@ function charger() {
 charger();
 
 const obtenir = (id) => registre.get(id) || null;
+const { CATEGORIES, BIENTOT, CATEGORIE_DEFAUT } = require('./categories');
+const categorieDe = (m) => (CATEGORIES.some((c) => c.id === m.categorie) ? m.categorie : CATEGORIE_DEFAUT);
 
 /** Description publique des mini-jeux (pour le formulaire de création). */
 function catalogue() {
@@ -74,8 +78,17 @@ function catalogue() {
     .sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom))
     .map((m) => ({
       id: m.id, nom: m.nom, description: m.description, icone: m.icone || '🎮',
+      categorie: categorieDe(m), objets: Array.isArray(m.objets) ? m.objets : null,
       parametres: [...(m.parametres || []), ...parametresCommuns(m)],
     }));
 }
 
-module.exports = { obtenir, catalogue, registre };
+/** Catégories de la page Jeux et cartes « Bientôt disponible » (jeux pas encore codés). */
+function categories() {
+  return {
+    categories: CATEGORIES,
+    bientot: BIENTOT.filter((b) => !registre.has(b.id)).map((b) => ({ ...b, bientot: true })),
+  };
+}
+
+module.exports = { obtenir, catalogue, categories, registre };

@@ -27,6 +27,8 @@ const departage = require('./departage');
 const { validerParametres } = require('./parametres');
 const { ErreurJeu, rng } = require('./outils');
 const perms = require('../services/permissions');
+const jourDeJeu = require('../services/jour');
+const designations = require('../services/designations');
 
 const GRACE_MS = 600; // tolérance réseau après la fin du chrono
 const DELAI_DERNIER_COUP_MS = 2000; // quand tout le monde a joué : on laisse voir le dernier coup (ex. dé qui roule) avant les résultats
@@ -34,20 +36,19 @@ const MAX_REJEUX = 5; // au 5e rejeu consécutif d'un même tour, on passe en mo
 const TTL_ACTIONS_S = 6 * 3600;
 const TTL_SALLE_TERMINEE_S = 12 * 3600;
 const ALPHABET_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const OBJETS = ['CONDUCTEUR', 'VIP']; // objet de la partie : ce que le gagnant obtient
+const OBJETS = ['CONDUCTEUR', 'VIP', 'AMUSEMENT']; // objet de la partie : ce que le gagnant obtient (AMUSEMENT = « Pour s'amuser »)
+const OBJETS_DESIGNATION = ['CONDUCTEUR', 'VIP']; // objets qui désignent le gagnant pour un jour J
 
-/** Date du jour à Paris, au format AAAA-MM-JJ. */
-const aujourdhui = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+/** Jour de jeu en cours (« AAAA-MM-JJ ») : un jour commence à 3h00, heure de Paris. */
+const { aujourdhui } = jourDeJeu;
 
-/** Vérifie la date d'application (« AAAA-MM-JJ », entre 7 jours avant et 1 an après aujourd'hui). */
+/** Vérifie le jour J (« AAAA-MM-JJ », d'aujourd'hui à 1 an : jamais dans le passé). */
 function validerDateObjet(d) {
   const s = String(d || '');
-  const date = new Date(`${s}T00:00:00Z`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== s) {
-    throw new ErreurJeu('Choisis la date à laquelle le gagnant sera Conducteur ou VIP.');
-  }
-  const ecartJours = (date - new Date(`${aujourdhui()}T00:00:00Z`)) / 86400000;
-  if (ecartJours < -7 || ecartJours > 366) throw new ErreurJeu('La date du Conducteur / VIP doit être proche d\'aujourd\'hui.');
+  if (!jourDeJeu.estJour(s)) throw new ErreurJeu('Choisis la date du jour J : le jour où le gagnant sera Conducteur ou VIP.');
+  const ecart = jourDeJeu.ecartJours(aujourdhui(), s);
+  if (ecart < 0) throw new ErreurJeu('Le jour J ne peut pas être dans le passé.');
+  if (ecart > 366) throw new ErreurJeu('Le jour J doit être dans moins d\'un an.');
   return s;
 }
 
@@ -114,6 +115,13 @@ class Moteur {
     return j;
   }
 
+  /** Mener une salle : son organisateur, ou un R4 / R5 / admin (données FRAÎCHES de la base). */
+  async exigerMeneur(auteurId, code) {
+    const [j, etat] = await Promise.all([prisma.joueur.findUnique({ where: { id: Number(auteurId) } }), this.exigerSalle(code)]);
+    if (!perms.peutMenerSalle(j, etat.organisateur.id)) throw new ErreurJeu('Seuls l\'organisateur de la salle et les R4, R5 et admins peuvent faire ça.');
+    return j;
+  }
+
   /** Exécute fn(etat) sous le verrou de la salle, puis sauvegarde/diffuse si demandé. */
   async sousVerrou(code, fn) {
     return avecVerrou(cleVerrouSalle(code), async () => {
@@ -135,16 +143,24 @@ class Moteur {
   // ------------------------------------------------------------------ salles
 
   async creerSalle({ organisateurId, miniJeuId, parametres, objet, dateObjet }) {
-    const org = await this.exigerOrganisateur(organisateurId);
+    const org = await prisma.joueur.findUnique({ where: { id: Number(organisateurId) } });
+    if (!org || org.actif === false || org.supprimeLe) throw new ErreurJeu('Compte inactif.');
     const mod = registre.obtenir(miniJeuId);
     if (!mod) throw new ErreurJeu('Mini-jeu inconnu.');
-    if (!OBJETS.includes(objet)) throw new ErreurJeu('Précise l\'objet de la partie : Conducteur ou VIP du train.');
-    dateObjet = validerDateObjet(dateObjet);
+    if (!OBJETS.includes(objet)) throw new ErreurJeu('Précise l\'objet de la partie : Conducteur du train, VIP du train ou Pour s\'amuser.');
+    if (Array.isArray(mod.objets) && !mod.objets.includes(objet)) {
+      throw new ErreurJeu(`${mod.nom} se joue uniquement « Pour s'amuser ».`);
+    }
+    if (!perms.peutLancerObjet(org, objet)) {
+      throw Object.assign(new ErreurJeu('Seuls les R4, R5 et admins peuvent lancer une partie pour le Conducteur ou le VIP. Choisis « Pour s\'amuser ».'), { statut: 403 });
+    }
+    // « Pour s'amuser » : aucun conducteur ni VIP n'est désigné, pas de jour J
+    dateObjet = OBJETS_DESIGNATION.includes(objet) ? validerDateObjet(dateObjet) : null;
     const params = validerParametres(mod, parametres);
     const code = await this.genererCode();
 
     const partie = await prisma.partie.create({
-      data: { code, miniJeu: mod.id, objet, dateObjet: new Date(`${dateObjet}T00:00:00Z`), parametres: params, organisateurId: org.id },
+      data: { code, miniJeu: mod.id, objet, dateObjet: dateObjet ? jourDeJeu.versDate(dateObjet) : null, parametres: params, organisateurId: org.id },
     });
 
     const etat = {
@@ -184,7 +200,7 @@ class Moteur {
   /** Quitter la salle d'attente (ou en exclure quelqu'un de pas prêt, pour l'organisateur). */
   async desinscrire(code, joueurId, auteurId = joueurId) {
     const id = String(joueurId);
-    if (String(auteurId) !== id) await this.exigerOrganisateur(auteurId);
+    if (String(auteurId) !== id) await this.exigerMeneur(auteurId, code);
     const nb = await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie a commencé : impossible de quitter la liste.');
       if (!etat.joueurs[id]) return null;
@@ -216,7 +232,7 @@ class Moteur {
 
   /** L'organisateur fait sonner l'alerte chez tous les joueurs de la salle (une fois toutes les 10 s). */
   async alerter(code, auteurId) {
-    const org = await this.exigerOrganisateur(auteurId);
+    const org = await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie a déjà commencé.');
       if (etat.derniereAlerte && Date.now() - etat.derniereAlerte < 10000) throw new ErreurJeu('Alerte déjà envoyée, patiente quelques secondes.');
@@ -227,7 +243,7 @@ class Moteur {
   }
 
   async lancer(code, auteurId) {
-    await this.exigerOrganisateur(auteurId);
+    await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie est déjà lancée.');
       if (etat.ordre.length < 2) throw new ErreurJeu('Il faut au moins 2 joueurs inscrits.');
@@ -260,7 +276,7 @@ class Moteur {
 
   /** Bouton « suivant » de l'organisateur : termine le tour en cours ou lance le suivant. */
   async suivant(code, auteurId) {
-    await this.exigerOrganisateur(auteurId);
+    await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase === 'tour') await this.resoudreTour(etat);
       else if (etat.phase === 'resultats') await this.apresResultats(etat);
@@ -281,7 +297,7 @@ class Moteur {
    * en salle d'attente ou sur l'écran des résultats. Le module valide via commandeOrganisateur().
    */
   async commandeOrga(code, auteurId, donnees) {
-    await this.exigerOrganisateur(auteurId);
+    await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       const mod = registre.obtenir(etat.miniJeu);
       if (typeof mod.commandeOrganisateur !== 'function') throw new ErreurJeu('Ce mini-jeu n\'a pas de réglage en cours de partie.');
@@ -301,7 +317,7 @@ class Moteur {
 
   /** L'organisateur commence à modifier un réglage entre deux tours : on suspend le compte à rebours. */
   async pauseReglage(code, auteurId) {
-    await this.exigerOrganisateur(auteurId);
+    await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'resultats' || etat.pauseReglage || !etat.echeance || etat.gagnantAVenir) return;
       etat.pauseReglage = true;
@@ -312,7 +328,7 @@ class Moteur {
   }
 
   async arreter(code, auteurId) {
-    await this.exigerOrganisateur(auteurId);
+    await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase === 'termine') return;
       etat.phase = 'termine';
@@ -555,6 +571,13 @@ class Moteur {
         }),
       ]);
     } catch (e) { console.error('[moteur] enregistrement du gagnant', e.message); }
+
+    // Conducteur / VIP : le gagnant remplace la personne déjà désignée pour ce rôle et ce jour J
+    if (OBJETS_DESIGNATION.includes(etat.objet) && etat.dateObjet) {
+      try {
+        await designations.attribuerGagnant({ objet: etat.objet, jourJ: etat.dateObjet, joueurId: gagnantId, partieId: etat.partieId });
+      } catch (e) { console.error('[moteur] désignation du gagnant', e.message); }
+    }
   }
 
   /** Retire la salle des salles actives ; l'état reste lisible quelques heures (écran du gagnant). */
@@ -717,4 +740,5 @@ class Moteur {
 module.exports = new Moteur();
 module.exports.Moteur = Moteur;
 module.exports.OBJETS = OBJETS;
+module.exports.OBJETS_DESIGNATION = OBJETS_DESIGNATION;
 module.exports.aujourdhui = aujourdhui;

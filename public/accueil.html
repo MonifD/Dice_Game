@@ -15,7 +15,7 @@
   <main class="page">
     <div class="ligne espace" style="margin-bottom:16px">
       <h1 id="bonjour" style="margin:0">Bienvenue</h1>
-      <a class="btn principal cache" id="btn-creer" href="/admin#creer">＋ Créer une partie</a>
+      <a class="btn principal" id="btn-creer" href="/jeux">🎮 Lancer un jeu</a>
     </div>
     <div id="designations" style="margin-bottom:16px"></div>
 
@@ -42,7 +42,7 @@
         <section class="panneau">
           <h3>Comment ça marche ?</h3>
           <ol class="muet petit" style="padding-left:18px;margin:0">
-            <li>Un R4, R5 ou admin crée une salle et choisit le mini-jeu.</li>
+            <li>Une salle est créée depuis la page <a href="/jeux">Jeux</a> : pour le Conducteur ou le VIP du train (R4, R5, admins), ou « Pour s'amuser » (tout le monde).</li>
             <li>Tu rejoins la salle d'attente.</li>
             <li>À chaque tour, joue avant la fin du chrono, sinon tu es éliminé.</li>
             <li>Éliminé ? Tu restes en spectateur jusqu'au bout.</li>
@@ -63,7 +63,6 @@
       const moi = await LW.session();
       LW.barre('accueil');
       $('#bonjour').textContent = `Salut ${moi.pseudo} 👋`;
-      if (LW.peutOrganiser(moi)) $('#btn-creer').classList.remove('cache');
 
       const PHASES = { attente: ['Salle d\'attente', 'vert'], tour: ['En cours', 'or'], resultats: ['En cours', 'or'] };
       async function chargerSalles() {
@@ -80,7 +79,7 @@
             </div>
             <span class="btn petit">${s.phase === 'attente' ? 'Rejoindre' : 'Regarder'}</span>
           </a>`;
-        }).join('') : '<div class="vide">Aucune partie pour le moment.<br>Attends qu\'un R4/R5 en crée une.</div>';
+        }).join('') : '<div class="vide">Aucune partie pour le moment.<br><a href="/jeux">Lance un jeu « Pour s\'amuser »</a> ou attends qu\'un R4/R5 en crée une.</div>';
       }
 
       async function chargerStats() {

@@ -32,7 +32,10 @@ function validerMotDePasse(mdp) {
 
 /** Données d'un joueur exposables au navigateur (jamais le hash !). */
 function profilPublic(j) {
-  return { id: j.id, pseudo: j.pseudo, rang: j.rang, role: j.role, actif: j.actif, dateInscription: j.dateInscription };
+  return {
+    id: j.id, pseudo: j.pseudo, rang: j.rang, role: j.role, actif: j.actif, dateInscription: j.dateInscription,
+    doitChangerMdp: !!j.doitChangerMdp,
+  };
 }
 
 async function inscrire(pseudo, motDePasse) {
@@ -56,6 +59,7 @@ async function connecter(pseudo, motDePasse) {
   // Même message dans les deux cas pour ne pas révéler quels pseudos existent.
   const ok = j && (await bcrypt.compare(String(motDePasse || ''), j.motDePasseHash));
   if (!ok) throw new ErreurAuth('Pseudo ou mot de passe incorrect.', 401);
+  if (j.supprimeLe) throw new ErreurAuth('Pseudo ou mot de passe incorrect.', 401);
   if (!j.actif) throw new ErreurAuth('Ce compte est bloqué. Contacte un admin.', 403);
   await prisma.joueur.update({ where: { id: j.id }, data: { derniereConnexion: new Date() } });
   return j;
@@ -73,7 +77,7 @@ async function joueurDepuisJeton(jeton) {
   const id = jeton && lireJeton(jeton);
   if (!id) return null;
   const j = await prisma.joueur.findUnique({ where: { id } });
-  return j && j.actif ? j : null;
+  return j && j.actif && !j.supprimeLe ? j : null;
 }
 
 /** Crée le super admin défini dans les variables d'environnement s'il n'existe pas. */

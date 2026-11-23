@@ -96,6 +96,7 @@ function creerServeurSocket(httpServer) {
       const jeton = socket.handshake.auth?.token || cookies[config.cookieNom];
       const joueur = await joueurDepuisJeton(jeton);
       if (!joueur) return next(new Error('non_authentifie'));
+      if (joueur.doitChangerMdp) return next(new Error('changer_mdp')); // mot de passe temporaire à changer d'abord
       socket.data.joueur = { id: String(joueur.id), pseudo: joueur.pseudo, rang: joueur.rang, role: joueur.role };
       next();
     } catch (e) { next(e); }

@@ -25,15 +25,28 @@
   /** Date courte « 28/10 ». */
   LW.dateCourte = (d) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 
-  // ---------------------------------------------------------- objet de la partie (Conducteur / VIP du train)
+  // ---------------------------------------------------------- objet de la partie (Conducteur / VIP du train / Pour s'amuser)
   LW.objets = {
     CONDUCTEUR: { icone: '🚂', court: 'Conducteur', long: 'Conducteur du train', cls: 'conducteur' },
     VIP: { icone: '⭐', court: 'VIP', long: 'VIP du train', cls: 'vip' },
+    AMUSEMENT: { icone: '🎉', court: 'Pour s\'amuser', long: 'Pour s\'amuser', cls: 'amusement' },
   };
+  /** Objets qui désignent le gagnant pour un jour J. */
+  LW.objetsDesignation = ['CONDUCTEUR', 'VIP'];
   /** « AAAA-MM-JJ » -> « 28/10 » (sans passer par Date : pas de décalage de fuseau). */
   LW.jour = (s) => { const [, m, d] = String(s || '').slice(0, 10).split('-'); return d && m ? `${d}/${m}` : ''; };
-  /** Date du jour à Paris, « AAAA-MM-JJ ». */
-  LW.aujourdhui = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  /**
+   * Jour de jeu en cours, « AAAA-MM-JJ » : un jour commence à 3h00 du matin, heure de Paris
+   * (le 24/11 à 1h, on est encore le 23/11). Miroir de src/services/jour.js.
+   */
+  LW.aujourdhui = () => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    const d = new Date(`${p.year}-${p.month}-${p.day}T12:00:00Z`);
+    if (Number(p.hour) < 3) d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  };
   /** Badge « 🚂 Conducteur le 28/10 » (vide si la partie n'a pas d'objet). */
   LW.badgeObjet = (objet, { long = false, date = null } = {}) => {
     const o = LW.objets[objet];
@@ -59,24 +72,59 @@
     if (socket.connected) await suivre();
   };
 
-  /** Cartes « Conducteur actuel / VIP actuel » (dernier gagnant de chaque type). */
+  /**
+   * Bandeaux de l'accueil : Conducteur et VIP désignés pour le jour en cours (un jour commence à 3h00).
+   * Une désignation pour un jour futur n'apparaît que ce jour-là. Personne : « Non désigné ».
+   */
   LW.afficherDesignations = async (conteneur) => {
     try {
-      const { designations, aujourdhui } = await LW.api('/api/designations');
-      conteneur.innerHTML = `<div class="designations">${Object.entries(LW.objets).map(([cle, o]) => {
+      const { designations } = await LW.api('/api/designations');
+      const modifiable = LW.peutOrganiser(LW.moi);
+      conteneur.innerHTML = `<div class="designations">${LW.objetsDesignation.map((cle) => {
+        const o = LW.objets[cle];
         const d = designations[cle];
-        const auj = d && d.dateObjet === aujourdhui;
-        // sur téléphone, seuls le logo, la date (ou le nom court) et le pseudo restent visibles (voir style.css)
-        const quand = d ? `<span class="sep"> · ${auj ? '' : 'le '}</span><span class="quand">${auj ? 'aujourd\'hui' : LW.jour(d.dateObjet)}</span>`
-          : `<span class="quand seul">${o.court}</span>`;
+        // sur téléphone, seuls le logo, le nom court et le pseudo restent visibles (voir style.css)
         return `<div class="designation ${o.cls}">
           <div class="ic">${o.icone}</div>
-          <div class="txt"><div class="titre"><span class="lib">${o.long}</span>${quand}</div>
-            ${d ? `<div class="nom">${LW.echapper(d.gagnant.pseudo)}</div><div class="muet petit gagne">gagné au ${d.icone} ${LW.echapper(d.miniJeu)}</div>`
-              : '<div class="nom muet">Personne pour l\'instant</div>'}
-          </div></div>`;
+          <div class="txt"><div class="titre"><span class="lib">${o.long}</span><span class="sep"> · </span><span class="quand">aujourd'hui</span><span class="quand seul">${o.court}</span></div>
+            ${d ? `<div class="nom">${LW.echapper(d.joueur.pseudo)}</div><div class="muet petit gagne">${d.miniJeu ? `gagné au ${d.icone || '🎮'} ${LW.echapper(d.miniJeu)}` : 'désigné à la main'}</div>`
+              : '<div class="nom muet">Non désigné</div>'}
+          </div>
+          ${modifiable ? `<a class="btn lien petit modifier-desig" href="/historique#designations" title="Modifier le ${o.court} d'une date">✎</a>` : ''}
+        </div>`;
       }).join('')}</div>`;
     } catch { conteneur.innerHTML = ''; }
+  };
+
+  // ---------------------------------------------------------- mot de passe temporaire
+  /**
+   * Un R4 / R5 / admin a donné un mot de passe temporaire : le membre doit en choisir un nouveau
+   * avant d'accéder au reste du site (le serveur refuse tout le reste avec le code « changer_mdp »).
+   */
+  let fenetreMdp = false;
+  LW.exigerNouveauMotDePasse = () => {
+    if (fenetreMdp) return;
+    fenetreMdp = true;
+    const f = LW.h(`<div class="voile"><form class="panneau fenetre" id="form-nouveau-mdp">
+      <h2>🔑 Nouveau mot de passe</h2>
+      <p class="muet">Ton mot de passe a été réinitialisé par un responsable. Choisis ton propre mot de passe pour continuer.</p>
+      <div class="champ"><label for="nmdp-1">Nouveau mot de passe</label><input type="password" id="nmdp-1" minlength="6" maxlength="72" required autocomplete="new-password"></div>
+      <div class="champ"><label for="nmdp-2">Confirme le mot de passe</label><input type="password" id="nmdp-2" minlength="6" maxlength="72" required autocomplete="new-password"></div>
+      <div class="ligne"><button class="btn principal">Enregistrer</button><button type="button" class="btn lien" id="nmdp-sortir">Se déconnecter</button></div>
+    </form></div>`);
+    document.body.appendChild(f);
+    LW.$('#nmdp-1').focus();
+    LW.$('#nmdp-sortir').onclick = LW.deconnexion;
+    LW.$('#form-nouveau-mdp').onsubmit = async (e) => {
+      e.preventDefault();
+      const nouveau = LW.$('#nmdp-1').value;
+      if (nouveau !== LW.$('#nmdp-2').value) { LW.toast('Les deux mots de passe ne sont pas identiques.', 'erreur'); return; }
+      try {
+        await LW.api('/api/auth/mot-de-passe', { methode: 'POST', corps: { nouveau } });
+        LW.toast('Mot de passe enregistré.', 'ok');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { LW.toast(err.message, 'erreur'); }
+    };
   };
 
   // ---------------------------------------------------------- API
@@ -89,6 +137,7 @@
     let donnees = {};
     try { donnees = await rep.json(); } catch { /* réponse vide */ }
     if (rep.status === 401 && !chemin.startsWith('/api/auth/')) { location.href = '/'; throw new Error('Connexion requise.'); }
+    if (rep.status === 403 && donnees.code === 'changer_mdp') LW.exigerNouveauMotDePasse();
     if (!rep.ok) throw new Error(donnees.erreur || `Erreur ${rep.status}`);
     return donnees;
   };
@@ -104,7 +153,12 @@
   LW.peutChangerRoles = (j) => LW.niveau(j) >= 2;
   /** Seuls les rangs R4 et R5 sont affichés à côté des pseudos (R1–R3 : le nom seul). */
   LW.rangVisible = (rang) => rang === 'R4' || rang === 'R5';
+  /** R4, R5 et admins : Conducteur / VIP, toutes les salles, désignations, comptes des membres. */
   LW.peutOrganiser = (j) => j && (LW.estAdmin(j) || j.rang === 'R4' || j.rang === 'R5');
+  /** Mener une salle : son organisateur, ou un R4 / R5 / admin. */
+  LW.peutMenerSalle = (j, etat) => !!j && (LW.peutOrganiser(j) || String(etat?.organisateur?.id) === String(j.id));
+  /** Mot de passe temporaire / suppression : super admin > admin > R5 > R4 > membres (miroir de niveauComptes). */
+  LW.niveauComptes = (j) => (!j ? 0 : j.role === 'SUPER_ADMIN' ? 4 : j.role === 'ADMIN' && LW.peutEtreAdmin(j.rang) ? 3 : j.rang === 'R5' ? 2 : j.rang === 'R4' ? 1 : 0);
   LW.libelleRole = (j) => (j.role === 'SUPER_ADMIN' ? 'Super admin' : j.role === 'ADMIN' ? 'Admin' : '');
 
   /** Charge le joueur connecté ; redirige vers la connexion si besoin. */
@@ -113,6 +167,7 @@
       const { joueur, jeton } = await LW.api('/api/auth/moi');
       LW.moi = joueur;
       LW.jetonSocket = jeton;
+      if (joueur.doitChangerMdp) LW.exigerNouveauMotDePasse();
       return joueur;
     } catch (e) {
       if (obligatoire) location.href = `/?retour=${encodeURIComponent(location.pathname + location.search)}`;
@@ -125,10 +180,12 @@
   /** Barre de navigation commune. */
   LW.barre = (pageActive) => {
     const j = LW.moi;
+    // Accueil – Jeux – Historique – Administration (R4, R5 et admins) ; mêmes liens dans le menu burger
     const liens = [
       ['accueil', '/accueil', 'Accueil'],
+      ['jeux', '/jeux', 'Jeux'],
       ['historique', '/historique', 'Historique'],
-      ...(LW.peutOrganiser(j) ? [['admin', '/admin', LW.estAdmin(j) ? 'Administration' : 'Organiser']] : []),
+      ...(LW.peutOrganiser(j) ? [['admin', '/admin', 'Administration']] : []),
     ];
     const badges = `${LW.rangVisible(j.rang) ? `<span class="badge or">${LW.echapper(j.rang)}</span>` : ''}
           ${LW.libelleRole(j) ? `<span class="badge bleu">${LW.libelleRole(j)}</span>` : ''}`;
@@ -218,7 +275,10 @@
         LW.api('/api/auth/moi').then((d) => cb({ token: d.jeton })).catch(() => cb({}));
       },
     });
-    socket.on('connect_error', (e) => { if (e.message === 'non_authentifie') location.href = '/'; });
+    socket.on('connect_error', (e) => {
+      if (e.message === 'non_authentifie') location.href = '/';
+      if (e.message === 'changer_mdp') { socket.disconnect(); LW.exigerNouveauMotDePasse(); }
+    });
     socket.on('disconnect', (raison) => {
       if (raison === 'io server disconnect') { LW.toast('Tu as été déconnecté par un admin.', 'erreur'); setTimeout(() => (location.href = '/'), 1500); }
     });

@@ -14,9 +14,23 @@
 <body>
   <main class="page">
     <h1>Historique & classement</h1>
-    <div id="designations" style="margin-bottom:16px"></div>
+
+    <!-- désignations à venir (jour en cours et suivants) -->
+    <section class="panneau" id="designations" style="margin-bottom:16px">
+      <div class="ligne espace"><h2 style="margin:0">📅 Désignations à venir</h2><span class="muet petit" id="auj"></span></div>
+      <p class="muet petit">Conducteur et VIP du train désignés pour aujourd'hui et les jours suivants (un jour commence à 3h00, heure de Paris).</p>
+      <div class="a-venir" id="a-venir"><div class="vide">Chargement…</div></div>
+      <form class="form-desig cache" id="form-desig">
+        <div class="champ"><label for="d-objet">Rôle</label><select id="d-objet"><option value="CONDUCTEUR">🚂 Conducteur du train</option><option value="VIP">⭐ VIP du train</option></select></div>
+        <div class="champ"><label for="d-jour">Date</label><input type="date" id="d-jour" required></div>
+        <div class="champ"><label for="d-joueur">Personne</label><select id="d-joueur"><option value="">— Non désigné (retirer) —</option></select></div>
+        <div class="champ"><button class="btn principal" style="width:100%">✎ Modifier la désignation</button></div>
+      </form>
+    </section>
+
     <div class="onglets">
       <button data-onglet="parties" class="actif">Parties</button>
+      <button data-onglet="journal">Désignations</button>
       <button data-onglet="classement">Classement des victoires</button>
     </div>
 
@@ -25,10 +39,11 @@
         <button class="btn petit actif" data-objet="">Toutes</button>
         <button class="btn petit" data-objet="CONDUCTEUR">🚂 Conducteur</button>
         <button class="btn petit" data-objet="VIP">⭐ VIP</button>
+        <button class="btn petit" data-objet="AMUSEMENT">🎉 Pour s'amuser</button>
       </div>
       <div class="defile-x">
         <table class="tableau cartes-mobile">
-          <thead><tr><th>Date</th><th>Gagnant</th><th>Désignation</th><th>Mini-jeu</th><th>Joueurs</th><th>Tours</th><th>Organisateur</th></tr></thead>
+          <thead><tr><th>Date</th><th>Gagnant</th><th>Objet · jour J</th><th>Jeu</th><th>Joueurs</th><th>Tours</th><th>Organisateur</th></tr></thead>
           <tbody id="parties"><tr><td colspan="7" class="vide">Chargement…</td></tr></tbody>
         </table>
       </div>
@@ -36,6 +51,16 @@
         <button class="btn petit" id="prec">← Plus récentes</button>
         <span class="muet petit" id="pagination"></span>
         <button class="btn petit" id="suiv">Plus anciennes →</button>
+      </div>
+    </section>
+
+    <section class="panneau cache" id="onglet-journal">
+      <p class="muet petit">Toutes les désignations Conducteur / VIP, des plus récentes aux plus anciennes. Les désignations remplacées ou modifiées restent visibles.</p>
+      <div class="defile-x">
+        <table class="tableau">
+          <thead><tr><th>Date et heure</th><th>Jour J</th><th>Rôle</th><th>Personne</th><th>Origine</th><th>Statut</th></tr></thead>
+          <tbody id="journal"></tbody>
+        </table>
       </div>
     </section>
 
@@ -51,18 +76,84 @@
   <script src="/js/commun.js"></script>
   <script>
     (async () => {
-      const { $, $$, echapper } = LW;
-      await LW.session();
+      const { $, $$, echapper, toast } = LW;
+      const moi = await LW.session();
       LW.barre('historique');
-      LW.afficherDesignations($('#designations'));
+      const responsable = LW.peutOrganiser(moi); // R4, R5, admins : modifier / retirer une désignation
 
-      $$('.onglets button').forEach((b) => (b.onclick = () => {
-        $$('.onglets button').forEach((x) => x.classList.toggle('actif', x === b));
-        $('#onglet-parties').classList.toggle('cache', b.dataset.onglet !== 'parties');
-        $('#onglet-classement').classList.toggle('cache', b.dataset.onglet !== 'classement');
-        if (b.dataset.onglet === 'classement') chargerClassement();
-      }));
+      const ONGLETS = ['parties', 'journal', 'classement'];
+      const ouvrir = (id) => {
+        $$('.onglets button').forEach((x) => x.classList.toggle('actif', x.dataset.onglet === id));
+        ONGLETS.forEach((o) => $(`#onglet-${o}`).classList.toggle('cache', o !== id));
+        if (id === 'classement') chargerClassement();
+        if (id === 'journal') chargerDesignations();
+      };
+      $$('.onglets button').forEach((b) => (b.onclick = () => ouvrir(b.dataset.onglet)));
 
+      // ------------------------------------------------ désignations (à venir + journal)
+      const nom = (j) => (j ? `<b>${echapper(j.pseudo)}</b>` : '<span class="muet">Non désigné</span>');
+      function origine(d) {
+        if (d.mode === 'PARTIE') return d.jeu ? `🏆 gagné au ${d.jeu.icone} ${echapper(d.jeu.nom)}` : '🏆 gagné en partie';
+        const avant = d.ancienPseudo ? ` <span class="muet">(avant : ${echapper(d.ancienPseudo)})</span>` : '';
+        if (d.mode === 'SUPPRESSION') return `🗑 compte supprimé${avant}`;
+        return `✎ ${d.joueur ? 'modifié' : 'retiré'} à la main par <b>${echapper(d.auteur || '?')}</b>${avant}`;
+      }
+      function statut(d) {
+        if (d.statut === 'en_vigueur') return '<span class="badge vert">En vigueur</span>';
+        if (d.statut === 'modifie') return `<span class="badge">modifié par ${echapper(d.modifiePar || '?')}</span>`;
+        return '<span class="badge">remplacé</span>';
+      }
+      async function chargerDesignations() {
+        const h = await LW.api('/api/designations/historique');
+        $('#auj').textContent = `Aujourd'hui : ${LW.jour(h.aujourdhui)}`;
+        $('#a-venir').innerHTML = h.aVenir.length ? h.aVenir.map((d) => {
+          const o = LW.objets[d.objet];
+          return `<div class="item"><span class="ic">${o.icone}</span><div class="txt">
+            <div class="muet petit">${o.court} du <b style="color:var(--texte)">${LW.jour(d.jour)}</b>${d.jour === h.aujourdhui ? ' · aujourd\'hui' : ''}</div>
+            <div class="nom">${d.joueur ? echapper(d.joueur.pseudo) : '<span class="muet">Non désigné</span>'}</div>
+            <div class="muet petit">${origine(d)}</div></div>
+            ${responsable ? `<div class="pile" style="gap:4px"><button class="btn petit" data-modif="${d.objet}|${d.jour}|${d.joueur?.id ?? ''}" title="Modifier">✎</button>
+              ${d.joueur ? `<button class="btn petit danger" data-retirer="${d.objet}|${d.jour}" data-pseudo="${echapper(d.joueur.pseudo)}" title="Retirer">✕</button>` : ''}</div>` : ''}
+          </div>`;
+        }).join('') : '<div class="vide">Aucune désignation pour aujourd\'hui ni pour les jours suivants.</div>';
+        $('#journal').innerHTML = h.journal.length ? h.journal.map((d) => `<tr class="${d.active ? '' : 'inactif'}">
+          <td class="petit">${LW.date(d.date)}</td><td><b>${LW.jour(d.jour)}</b></td>
+          <td>${LW.badgeObjet(d.objet)}</td><td>${nom(d.joueur)}</td><td class="petit">${origine(d)}</td><td>${statut(d)}</td></tr>`).join('')
+          : '<tr><td colspan="6" class="vide">Aucune désignation pour l\'instant.</td></tr>';
+
+        $$('[data-modif]').forEach((b) => (b.onclick = () => {
+          const [objet, jour, joueurId] = b.dataset.modif.split('|');
+          $('#d-objet').value = objet; $('#d-jour').value = jour; $('#d-joueur').value = joueurId;
+          $('#d-joueur').focus();
+          $('#form-desig').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }));
+        $$('[data-retirer]').forEach((b) => (b.onclick = () => {
+          const [objet, jour] = b.dataset.retirer.split('|');
+          if (confirm(`Retirer ${b.dataset.pseudo} (${LW.objets[objet].court} du ${LW.jour(jour)}) ? La désignation passera à « Non désigné ».`)) enregistrer(objet, jour, null);
+        }));
+      }
+      async function enregistrer(objet, jour, joueurId) {
+        try {
+          await LW.api('/api/designations', { methode: 'PUT', corps: { objet, jour, joueurId } });
+          toast(joueurId ? 'Désignation modifiée.' : 'Désignation retirée.', 'ok');
+        } catch (e) { toast(e.message, 'erreur'); }
+        chargerDesignations();
+      }
+      if (responsable) {
+        $('#form-desig').classList.remove('cache');
+        $('#d-jour').value = LW.aujourdhui();
+        LW.api('/api/membres').then(({ membres }) => {
+          $('#d-joueur').insertAdjacentHTML('beforeend', membres.map((m) => `<option value="${m.id}">${echapper(m.pseudo)}${LW.rangVisible(m.rang) ? ` (${m.rang})` : ''}</option>`).join(''));
+        }).catch(() => {});
+        $('#form-desig').onsubmit = (e) => {
+          e.preventDefault();
+          enregistrer($('#d-objet').value, $('#d-jour').value, $('#d-joueur').value ? Number($('#d-joueur').value) : null);
+        };
+      }
+      chargerDesignations();
+      if (location.hash === '#designations') $('#designations').scrollIntoView();
+
+      // ------------------------------------------------ parties
       let page = 1;
       let filtre = '';
       $$('#filtres [data-objet]').forEach((b) => (b.onclick = () => {
@@ -70,10 +161,10 @@
         $$('#filtres [data-objet]').forEach((x) => x.classList.toggle('actif', x === b));
         chargerParties();
       }));
-      /** « 🚂 Conducteur le 28/10 » */
+      /** « 🚂 Conducteur le 28/10 », « 🎉 Pour s'amuser » */
       function designation(p) {
         const o = LW.objets[p.objet];
-        return o ? `<span class="objet-txt ${o.cls}">${o.icone} ${o.court}</span>${p.dateObjet ? ` le <b>${LW.jour(p.dateObjet)}</b>` : ''}` : '<span class="muet">–</span>';
+        return o ? `<span class="objet-txt ${o.cls}">${o.icone} ${o.court}</span>${p.dateObjet ? ` du <b>${LW.jour(p.dateObjet)}</b>` : ''}` : '<span class="muet">–</span>';
       }
       async function chargerParties() {
         const d = await LW.api(`/api/historique?page=${page}${filtre ? `&objet=${filtre}` : ''}`);
@@ -83,7 +174,7 @@
         $('#suiv').disabled = page >= pages;
         $('#parties').innerHTML = d.parties.length ? d.parties.map((p) => `<tr>
           <td class="c-date" title="${LW.date(p.date)}"><b>${LW.dateCourte(p.date)}</b></td>
-          <td class="c-gagnant">${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b>${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
+          <td class="c-gagnant">${p.statut === 'ANNULEE' ? '<span class="badge rouge">Arrêtée</span>' : p.gagnant ? `🏆 <b class="${p.gagnant.supprime ? 'muet' : ''}">${echapper(p.gagnant.pseudo)}</b>` : '–'}</td>
           <td class="c-desig" style="white-space:nowrap">${designation(p)}</td>
           <td class="c-info">${p.icone} ${echapper(p.miniJeu)}</td>
           <td class="c-info" data-mobile="joueurs">${p.nbParticipants}</td><td class="c-info" data-mobile="tours">${p.nbTours}</td><td class="c-info muet" data-mobile="par">${echapper(p.organisateur)}</td></tr>`).join('')
@@ -96,7 +187,7 @@
         const { classement } = await LW.api('/api/classement');
         const medaille = ['🥇', '🥈', '🥉'];
         $('#classement').innerHTML = classement.length ? classement.map((c) => `<tr class="${c.joueur?.id === LW.moi.id ? 'moi' : ''}">
-          <td>${medaille[c.rang - 1] || c.rang}</td><td><b>${echapper(c.joueur?.pseudo)}</b></td>
+          <td>${medaille[c.rang - 1] || c.rang}</td><td><b class="${c.joueur?.supprime ? 'muet' : ''}">${echapper(c.joueur?.pseudo)}</b></td>
           <td>${LW.rangVisible(c.joueur?.rang) ? `<span class="badge or">${c.joueur.rang}</span>` : ''}</td>
           <td class="chiffre" style="font-size:1.2rem">${c.victoires}</td><td>${c.parties}</td></tr>`).join('')
           : '<tr><td colspan="5" class="vide">Pas encore de vainqueur.</td></tr>';

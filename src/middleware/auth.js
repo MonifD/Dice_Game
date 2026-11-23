@@ -10,15 +10,25 @@ function extraireJeton(req) {
   return h.startsWith('Bearer ') ? h.slice(7) : null;
 }
 
-/** Exige un joueur connecté et actif ; le place dans req.joueur. */
-async function exigerConnexion(req, res, next) {
+const MESSAGE_CHANGER_MDP = 'Ton mot de passe a été réinitialisé : choisis un nouveau mot de passe pour continuer.';
+
+/**
+ * Exige un joueur connecté et actif ; le place dans req.joueur.
+ * Un membre qui a reçu un mot de passe temporaire doit d'abord le changer (HTTP 403, code « changer_mdp »),
+ * sauf sur les routes créées avec { mdpTemporaire: true } (profil, changement de mot de passe).
+ */
+const connexion = ({ mdpTemporaire = false } = {}) => async (req, res, next) => {
   try {
     const joueur = await joueurDepuisJeton(extraireJeton(req));
     if (!joueur) return res.status(401).json({ erreur: 'Connexion requise.' });
+    if (joueur.doitChangerMdp && !mdpTemporaire) return res.status(403).json({ erreur: MESSAGE_CHANGER_MDP, code: 'changer_mdp' });
     req.joueur = joueur;
     next();
   } catch (e) { next(e); }
-}
+};
+const exigerConnexion = connexion();
+/** Connexion obligatoire, même avec un mot de passe temporaire pas encore changé. */
+const exigerConnexionMdpTemporaire = connexion({ mdpTemporaire: true });
 
 const exiger = (regle, message) => (req, res, next) =>
   regle(req.joueur) ? next() : res.status(403).json({ erreur: message || 'Droits insuffisants.' });
@@ -26,6 +36,8 @@ const exiger = (regle, message) => (req, res, next) =>
 module.exports = {
   extraireJeton,
   exigerConnexion,
+  exigerConnexionMdpTemporaire,
+  MESSAGE_CHANGER_MDP,
   exigerOrganisateur: exiger(perms.peutOrganiser, 'Réservé aux R4, R5 et admins.'),
   exigerAdmin: exiger(perms.estAdmin, 'Réservé aux admins.'),
   exigerSuperAdmin: exiger(perms.estSuperAdmin, 'Réservé au super admin.'),

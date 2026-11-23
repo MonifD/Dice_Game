@@ -3,21 +3,26 @@ const express = require('express');
 const prisma = require('../db/prisma');
 const moteur = require('../moteur/moteur');
 const registre = require('../minijeux');
+const designations = require('../services/designations');
+const { nomAffiche, joueurPublic, SELECT_JOUEUR } = designations;
 const { exigerConnexion, exigerOrganisateur } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(exigerConnexion);
 
 /** Liste des mini-jeux et de leurs paramètres (formulaire de création). */
-router.get('/minijeux', (req, res) => res.json({ minijeux: registre.catalogue() }));
+router.get('/minijeux', (req, res) => res.json({ minijeux: registre.catalogue(), ...registre.categories() }));
 
 /** Salles en attente ou en cours. */
 router.get('/salles', async (req, res, next) => {
   try { res.json({ salles: await moteur.listerSalles() }); } catch (e) { next(e); }
 });
 
-/** Créer une salle (R4, R5, admins). */
-router.post('/salles', exigerOrganisateur, async (req, res, next) => {
+/**
+ * Créer une salle : tout membre connecté en « Pour s'amuser » ; Conducteur / VIP réservés aux R4, R5 et admins
+ * (vérifié par le moteur, même si le navigateur n'a pas proposé ces options).
+ */
+router.post('/salles', async (req, res, next) => {
   try {
     const etat = await moteur.creerSalle({
       organisateurId: req.joueur.id, miniJeuId: req.body?.miniJeu, parametres: req.body?.parametres || {}, objet: req.body?.objet, dateObjet: req.body?.dateObjet,
@@ -28,31 +33,38 @@ router.post('/salles', exigerOrganisateur, async (req, res, next) => {
 
 const jour = (d) => (d ? d.toISOString().slice(0, 10) : null); // colonne DATE -> « AAAA-MM-JJ »
 
-/**
- * Désignations en cours, pour chaque objet (Conducteur, VIP) : celle d'aujourd'hui,
- * sinon la prochaine à venir, sinon la dernière passée.
- */
+/** Bandeaux de l'accueil : Conducteur et VIP désignés pour le jour en cours (règle des 3h du matin). */
 router.get('/designations', async (req, res, next) => {
   try {
-    const auj = new Date(`${moteur.aujourdhui()}T00:00:00Z`);
-    const select = { dateObjet: true, miniJeu: true, gagnant: { select: { id: true, pseudo: true } } };
-    const base = { statut: 'TERMINEE', gagnantId: { not: null }, dateObjet: { not: null } };
-    const dernieres = await Promise.all(moteur.OBJETS.map(async (objet) => (
-      await prisma.partie.findFirst({ where: { ...base, objet, dateObjet: { gte: auj } }, orderBy: [{ dateObjet: 'asc' }, { dateFin: 'desc' }], select })
-      || prisma.partie.findFirst({ where: { ...base, objet }, orderBy: [{ dateObjet: 'desc' }, { dateFin: 'desc' }], select })
-    )));
-    res.json({
-      aujourdhui: moteur.aujourdhui(),
-      designations: Object.fromEntries(moteur.OBJETS.map((objet, i) => [objet, dernieres[i] ? {
-        gagnant: dernieres[i].gagnant, dateObjet: jour(dernieres[i].dateObjet),
-        miniJeu: registre.obtenir(dernieres[i].miniJeu)?.nom || dernieres[i].miniJeu,
-        icone: registre.obtenir(dernieres[i].miniJeu)?.icone || '🎮',
-      } : null])),
-    });
+    res.json({ aujourdhui: moteur.aujourdhui(), designations: await designations.duJour(moteur.aujourdhui(), registre) });
   } catch (e) { next(e); }
 });
 
-/** Historique : parties terminées (date, objet, mini-jeu, gagnant), paginé, filtrable par objet. */
+/** Désignations à venir + journal des désignations (remplacées, modifiées, retirées). */
+router.get('/designations/historique', async (req, res, next) => {
+  try { res.json(await designations.historique({ registre })); } catch (e) { next(e); }
+});
+
+/** Modifier ou retirer à la main le Conducteur / VIP d'une date (R4, R5, admins). joueurId: null = retirer. */
+router.put('/designations', exigerOrganisateur, async (req, res, next) => {
+  try {
+    const { objet, jour: jourJ, joueurId = null } = req.body || {};
+    const d = await designations.modifier({ objet, jourJ, joueurId, auteur: req.joueur });
+    res.json({ designation: { objet: d.objet, jour: jour(d.jour), joueur: joueurPublic(d.joueur) } });
+  } catch (e) { next(e); }
+});
+
+/** Liste des membres (choix d'un Conducteur / VIP à la main) : R4, R5, admins. */
+router.get('/membres', exigerOrganisateur, async (req, res, next) => {
+  try {
+    const membres = await prisma.joueur.findMany({
+      where: { supprimeLe: null, actif: true }, orderBy: { pseudoNormalise: 'asc' }, select: { id: true, pseudo: true, rang: true }, take: 1000,
+    });
+    res.json({ membres });
+  } catch (e) { next(e); }
+});
+
+/** Historique : parties terminées (date, objet, jour J, mini-jeu, gagnant), paginé, filtrable par objet. */
 router.get('/historique', async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
@@ -63,7 +75,7 @@ router.get('/historique', async (req, res, next) => {
       prisma.partie.count({ where }),
       prisma.partie.findMany({
         where, orderBy: { dateCreation: 'desc' }, skip: (page - 1) * parPage, take: parPage,
-        include: { gagnant: { select: { id: true, pseudo: true } }, organisateur: { select: { pseudo: true } } },
+        include: { gagnant: { select: SELECT_JOUEUR }, organisateur: { select: SELECT_JOUEUR } },
       }),
     ]);
     res.json({
@@ -71,7 +83,7 @@ router.get('/historique', async (req, res, next) => {
       parties: parties.map((p) => ({
         id: p.id, code: p.code, date: p.dateDebut || p.dateCreation, statut: p.statut, objet: p.objet, dateObjet: jour(p.dateObjet),
         miniJeu: registre.obtenir(p.miniJeu)?.nom || p.miniJeu, icone: registre.obtenir(p.miniJeu)?.icone || '🎮',
-        nbParticipants: p.nbParticipants, nbTours: p.nbTours, gagnant: p.gagnant, organisateur: p.organisateur.pseudo,
+        nbParticipants: p.nbParticipants, nbTours: p.nbTours, gagnant: joueurPublic(p.gagnant), organisateur: nomAffiche(p.organisateur),
       })),
     });
   } catch (e) { next(e); }
@@ -89,9 +101,9 @@ router.get('/classement', async (req, res, next) => {
       _count: { _all: true },
     });
     const joueurs = await prisma.joueur.findMany({
-      where: { id: { in: victoires.map((v) => v.gagnantId) } }, select: { id: true, pseudo: true, rang: true },
+      where: { id: { in: victoires.map((v) => v.gagnantId) } }, select: { ...SELECT_JOUEUR, rang: true },
     });
-    const parId = Object.fromEntries(joueurs.map((j) => [j.id, j]));
+    const parId = Object.fromEntries(joueurs.map((j) => [j.id, { ...joueurPublic(j), rang: j.supprimeLe ? null : j.rang }]));
     const nbParties = Object.fromEntries(participations.map((p) => [p.joueurId, p._count._all]));
     res.json({
       classement: victoires.map((v, i) => ({
