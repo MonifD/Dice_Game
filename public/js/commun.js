@@ -343,6 +343,18 @@
       navigator.vibrate?.([200, 100, 200, 100, 400]);
       clignoterTitre('🔔 Prépare-toi !');
     },
+    /** Loup-Garou : la nuit tombe (notes graves descendantes). */
+    nuit() { jouerNotes([[392, 0.35], [330, 0.35], [262, 0.6]], 0.18); },
+    /** Loup-Garou : le jour se lève (notes montantes). */
+    jour() { jouerNotes([[523, 0.18], [659, 0.18], [784, 0.4]], 0.2); },
+    /** Annonce d'une mort (glas). */
+    mort() { jouerNotes([[196, 0.5], [0, 0.12], [185, 0.7]], 0.22); navigator.vibrate?.(250); },
+    /** C'est à toi d'agir : deux bips + vibration + titre qui clignote. */
+    tonTour() {
+      jouerNotes([[988, 0.12], [0, 0.06], [1319, 0.25]]);
+      navigator.vibrate?.([150, 80, 150]);
+      clignoterTitre('👉 À toi de jouer !');
+    },
     /** Départ de la partie. */
     depart() {
       jouerNotes([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.4]]);

@@ -575,3 +575,84 @@ tr.inactif td { opacity: .6; }
 .connecte.moi { border-color: rgba(245, 165, 36, .4); background: var(--accent-fond); }
 .pastille-verte { width: 8px; height: 8px; border-radius: 50%; background: var(--vert); flex: none; box-shadow: 0 0 0 3px var(--vert-fond); }
 .connecte .chat-rang, .connecte .chat-role { flex: none; }
+
+/* =============================================================
+   Chat : plusieurs salons (onglets) et écriture bloquée
+   ============================================================= */
+.chat-onglets { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.chat-onglet { background: var(--panneau-2); border: 1px solid var(--bord); color: var(--texte-2); border-radius: 999px; padding: 4px 10px; font: 600 .82rem var(--corps); cursor: pointer; white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
+.chat-onglet.actif { color: var(--texte); border-color: var(--accent); background: var(--accent-fond); }
+.chat-onglets:not(.cache) ~ .chat-fermer { margin-left: auto; }
+.chat-onglets:not(.cache) { flex: 1; }
+.chat-onglets:not(.cache) + .chat-fermer, .chat-entete .chat-titre-actif + .chat-onglets:not(.cache) { margin-left: 0; }
+.chat-entete:has(.chat-onglets:not(.cache)) .chat-titre-actif { display: none; }
+.chat-bloque { padding: 8px 12px; font-size: .85rem; color: #b9c6ff; background: rgba(90, 110, 220, .14); }
+
+/* =============================================================
+   Loup-Garou : ambiance nuit / jour, cartes, cibles, annonces
+   ============================================================= */
+body.jeu-nuit { background: radial-gradient(1100px 600px at 50% -200px, #18203a 0%, #070912 65%) fixed, #070912; }
+body.jeu-jour { background: radial-gradient(1100px 600px at 50% -200px, #3a3423 0%, var(--fond) 65%) fixed, var(--fond); }
+.joueur-ligne .point.absent { background: transparent; border: 2px solid var(--texte-3); }
+.lg { --lg-fond: #10162a; --lg-texte: var(--texte); }
+.lg.nuit { color: var(--texte); }
+.lg.jour { --lg-fond: #f4eedd; }
+.lg-entete { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 12px 14px; border-radius: 12px; margin-bottom: 10px; }
+.lg.nuit .lg-entete { background: linear-gradient(135deg, #1a2244, #0d1124); border: 1px solid #2c3766; }
+.lg.jour .lg-entete { background: linear-gradient(135deg, #fbf3dc, #efe2bd); border: 1px solid #e0cf9f; color: #3a2e12; }
+.lg-narration { font-family: var(--titre); font-size: 1.1rem; font-weight: 700; }
+.lg-chrono { font-family: var(--titre); font-weight: 800; font-size: 1.15rem; white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: rgba(0, 0, 0, .25); }
+.lg.jour .lg-chrono { background: rgba(58, 46, 18, .12); }
+.lg-chrono.urgent { color: #ff6b6b; animation: lg-pulse 1s infinite; }
+@keyframes lg-pulse { 50% { opacity: .55; } }
+.lg-principal { min-height: 180px; }
+.lg-dort { text-align: center; padding: 50px 10px; font-size: 1.3rem; font-family: var(--titre); color: #aab6e8; }
+.lg-debat { text-align: center; padding: 26px 10px; font-size: 1.05rem; display: grid; gap: 12px; justify-items: center; }
+.lg-carte { display: flex; gap: 16px; align-items: flex-start; padding: 16px; border-radius: 16px; margin-bottom: 12px; border: 1px solid var(--bord); background: linear-gradient(135deg, #1d2a1f, var(--panneau-2)); }
+.lg-carte.loups { background: linear-gradient(135deg, #3a1515, #1b1012); border-color: #6b2a2a; }
+.lg-carte.grande { flex-direction: column; align-items: center; text-align: center; max-width: 440px; margin: 10px auto; animation: lg-retourne .8s ease-out; }
+@keyframes lg-retourne { from { transform: rotateY(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.lg-carte-image { font-size: 64px; line-height: 1; width: 96px; height: 96px; display: grid; place-items: center; border-radius: 20px; background: rgba(0, 0, 0, .3); flex: none; }
+.lg-carte.grande .lg-carte-image { font-size: 96px; width: 150px; height: 150px; }
+.lg-carte-titre { font-family: var(--titre); font-size: 1.35rem; }
+.lg-carte-camp { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; color: var(--texte-2); }
+.lg-carte p { margin: 6px 0; color: var(--texte-2); }
+.lg-infos { display: grid; gap: 6px; font-size: .9rem; text-align: left; }
+.lg-visions { margin: 4px 0 0; padding-left: 18px; }
+.lg-action { padding: 14px; border-radius: 14px; border: 1px solid var(--accent); background: var(--accent-fond); }
+.lg-cibles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.lg-cible { display: grid; gap: 2px; text-align: left; padding: 12px; min-height: 52px; border-radius: 12px; border: 2px solid var(--bord); background: var(--panneau-2); color: var(--texte); font: 600 .95rem var(--corps); cursor: pointer; }
+.lg-cible:hover:not(:disabled) { border-color: #4b5566; }
+.lg-cible.choisie { border-color: var(--accent); background: rgba(245, 165, 36, .18); }
+.lg-cible:disabled { cursor: default; opacity: 1; }
+.lg-cible-votes { color: var(--accent-2); font-size: .82rem; font-weight: 700; }
+.lg-cible-votes .petit { color: var(--texte-2); font-weight: 500; }
+.lg-valider { width: 100%; margin-top: 8px; }
+.lg-victime { padding: 10px 12px; border-radius: 10px; background: rgba(239, 75, 75, .14); border: 1px solid rgba(239, 75, 75, .35); }
+.lg-annonces { display: grid; gap: 8px; padding: 6px 0; }
+.lg-mort { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 12px; background: rgba(239, 75, 75, .12); border: 1px solid rgba(239, 75, 75, .3); font-weight: 600; animation: lg-apparait .6s ease-out both; }
+.lg-mort:nth-child(2) { animation-delay: .8s; } .lg-mort:nth-child(3) { animation-delay: 1.6s; } .lg-mort:nth-child(4) { animation-delay: 2.4s; }
+@keyframes lg-apparait { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.lg-mort-ic { font-size: 30px; }
+.lg-message { padding: 14px; border-radius: 12px; text-align: center; font-size: 1.05rem; background: var(--vert-fond); border: 1px solid rgba(63, 191, 111, .3); }
+.lg-votes-finaux { font-size: .88rem; color: var(--texte-2); }
+.lg-journal { margin-top: 14px; font-size: .88rem; }
+.lg-journal summary { cursor: pointer; color: var(--texte-2); font-weight: 600; }
+.lg-journal > div { max-height: 220px; overflow-y: auto; display: grid; gap: 4px; margin-top: 6px; }
+.lg-journal-ligne.mort { color: #ff9a9a; }
+.lg-fin { text-align: center; }
+.lg-fin-titre { font-family: var(--titre); font-size: 1.8rem; font-weight: 800; color: var(--accent-2); margin: 10px 0; }
+.lg-fin-moi { padding: 10px; border-radius: 10px; background: var(--panneau-2); margin-bottom: 10px; font-weight: 600; }
+.lg-fin-moi.gagne { background: var(--vert-fond); color: #8be8ad; }
+.lg-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; text-align: left; }
+.lg-role-ligne { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--panneau-2); border: 1px solid var(--bord); }
+.lg-role-ligne.gagnant { border-color: rgba(245, 165, 36, .5); }
+.lg-role-ligne.mort b { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, .3); }
+.lg-role-ligne .petit { margin-left: auto; }
+.lg-resume { text-align: left; display: grid; gap: 4px; padding-left: 22px; }
+@media (max-width: 560px) {
+  .lg-cibles { grid-template-columns: 1fr 1fr; }
+  .lg-carte { flex-direction: column; align-items: center; text-align: center; }
+  .lg-narration { font-size: 1rem; }
+  .lg-roles { grid-template-columns: 1fr; }
+}

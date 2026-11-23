@@ -15,7 +15,8 @@
  *   jeu:orga         { code, donnees }   (organisateur) réglage du mini-jeu pour le prochain tour (ex. options A / B)
  *   jeu:orgaPause    { code }            (organisateur) suspend le compte à rebours pendant qu'il modifie un réglage
  *   accueil:suivre   {}                  recevoir les mises à jour de la liste des salles
- *   chat:rejoindre   { canal }           'general' ou 'salle:<code>' -> 100 derniers messages
+ *   chat:rejoindre   { canal }           'general', 'salle:<code>' ou 'jeu:<code>:loups|morts' -> 100 derniers messages
+ *                                        (jeux libres : droits de lecture / écriture donnés par le module)
  *   chat:quitter     { canal }
  *   chat:envoyer     { canal, texte, reponseA? }  reponseA = id du message auquel on répond
  *   chat:reagir      { canal, id, emoji }          emoji 62 (❤) ou 74 (🎉) ; 2e clic = retirer
@@ -25,6 +26,7 @@
  *   presence:quitter {}
  *
  * Serveur -> client :
+ *   jeu:prive { code, vue }  (jeux libres) vue secrète du joueur, envoyée à lui seul
  *   salle:etat, salle:inscription, salle:desinscription, salle:pret, salle:alerte, jeu:aAgi, jeu:evenement, salles:maj,
  *   chat:message, chat:supprime, chat:muet, chat:reaction { canal, id, reactions }
  *   presence:maj { joueurs: [{ id, pseudo, rang, role }] }
@@ -140,7 +142,7 @@ function creerServeurSocket(httpServer) {
       if (!vue) { const e = new Error('Salle introuvable.'); e.estErreurJeu = true; throw e; }
       for (const r of socket.rooms) if (r.startsWith('salle:') && r !== `salle:${c}`) socket.leave(r);
       socket.join(`salle:${c}`);
-      return { etat: vue, moi };
+      return { etat: vue, moi, prive: await moteur.vuePrivee(c, moi.id) };
     }));
 
     socket.on('salle:inscrire', gestionnaire(socket, async ({ code }) => moteur.inscrire(normaliserCode(code), moi)));
@@ -148,7 +150,10 @@ function creerServeurSocket(httpServer) {
     socket.on('salle:pret', gestionnaire(socket, async ({ code, pret }) => moteur.definirPret(normaliserCode(code), moi.id, pret !== false)));
     socket.on('salle:alerter', gestionnaire(socket, async ({ code }) => { await moteur.alerter(normaliserCode(code), moi.id); }));
     socket.on('salle:exclure', gestionnaire(socket, async ({ code, joueurId }) => {
-      await moteur.desinscrire(normaliserCode(code), joueurId, moi.id);
+      const c = normaliserCode(code);
+      // pendant un jeu libre (Loup-Garou) : exclure un joueur absent ; sinon : retirer de la salle d'attente
+      if ((await moteur.lire(c))?.phase === 'jeu') await moteur.exclureEnJeu(c, joueurId, moi.id);
+      else await moteur.desinscrire(c, joueurId, moi.id);
     }));
     socket.on('salle:lancer', gestionnaire(socket, async ({ code }) => { await moteur.lancer(normaliserCode(code), moi.id); }));
     socket.on('salle:suivant', gestionnaire(socket, async ({ code }) => { await moteur.suivant(normaliserCode(code), moi.id); }));
@@ -158,12 +163,16 @@ function creerServeurSocket(httpServer) {
     socket.on('jeu:action', gestionnaire(socket, async ({ code, donnees }) => moteur.agir(normaliserCode(code), moi.id, donnees)));
 
     // ------------------------------------------------------------ chat
-    /** Vérifie que le salon existe (général, ou salle encore connue). */
-    async function canalValide(canal) {
+    /**
+     * Vérifie que le salon existe et que le joueur a le droit d'y lire (ou d'y écrire) :
+     * dans un jeu libre, le chat de la salle (« village ») et les salons secrets suivent les règles du jeu.
+     */
+    async function canalValide(canal, operation = 'lire') {
       const c = chat.verifierCanal(canal);
-      if (c.startsWith('salle:') && !(await moteur.lire(c.slice(6)))) {
-        const e = new Error('Cette salle n\'existe plus.'); e.estErreurJeu = true; throw e;
-      }
+      if (c === 'general') return c;
+      const [, code, salon = 'village'] = c.split(':');
+      const d = await moteur.droitsChat(code, salon, moi.id);
+      if (!d[operation]) { const e = new Error(d.raison || 'Tu n\'as pas accès à ce salon.'); e.estErreurJeu = true; throw e; }
       return c;
     }
     /** Données fraîches du joueur (rang/rôle à jour pour la modération). */
@@ -181,13 +190,13 @@ function creerServeurSocket(httpServer) {
     }));
     socket.on('chat:quitter', gestionnaire(socket, async ({ canal }) => { socket.leave(`chat:${chat.verifierCanal(canal)}`); }));
     socket.on('chat:envoyer', gestionnaire(socket, async ({ canal, texte, reponseA }) => {
-      const c = await canalValide(canal);
+      const c = await canalValide(canal, 'ecrire');
       const message = await chat.envoyer(c, moi, texte, reponseA);
       io.to(`chat:${c}`).emit('chat:message', message);
       return { id: message.id };
     }));
     socket.on('chat:reagir', gestionnaire(socket, async ({ canal, id, emoji }) => {
-      const c = await canalValide(canal);
+      const c = await canalValide(canal, 'ecrire');
       const reactions = await chat.reagir(c, id, emoji, moi);
       io.to(`chat:${c}`).emit('chat:reaction', { canal: c, id: String(id), reactions });
       return { reactions };

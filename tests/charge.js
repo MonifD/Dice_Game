@@ -138,8 +138,9 @@ async function unePartie(miniJeu, { bots, org }) {
 
 (async () => {
   const comptes = await preparerComptes();
-  // --tous : TOUS les mini-jeux du registre (un jeu sans stratégie de bot fait échouer le test)
-  const jeux = args.tous ? require('../src/minijeux').catalogue().map((m) => m.id) : [args.jeu || 'des'];
+  // --tous : TOUS les mini-jeux d'élimination du registre (un jeu sans stratégie de bot fait échouer le test) ;
+  // les jeux libres (Loup-Garou) ont leur propre test : tests/integration/loup-garou.js
+  const jeux = args.tous ? require('../src/minijeux').catalogue().filter((m) => !require('../src/minijeux').obtenir(m.id).libre).map((m) => m.id) : [args.jeu || 'des'];
   const bilan = [];
   for (const j of jeux) {
     console.log(`\n=== ${j} — ${N} joueurs${URLS.length > 1 ? ` sur ${URLS.length} instances` : ''} ===`);

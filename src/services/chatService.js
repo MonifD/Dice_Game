@@ -21,7 +21,8 @@ const perms = require('./permissions');
 
 const MAX_MESSAGES = 100;
 const LONGUEUR_MAX = 200;
-const CANAL_VALIDE = /^(general|salle:[A-Z0-9]{4,8})$/;
+/** general, salle:<code> (chat de la salle) ou jeu:<code>:<salon> (salons secrets d'un jeu, ex. loups / morts). */
+const CANAL_VALIDE = /^(general|salle:[A-Z0-9]{4,8}|jeu:[A-Z0-9]{4,8}:(loups|morts))$/;
 const ID_VALIDE = /^[a-f0-9]{12}$/;
 /** Réactions autorisées : numéros des emojis Last War (public/emojis/lwNN.png). */
 const REACTIONS = [62, 74]; // ❤ cœur, 🎉 confettis

@@ -64,11 +64,13 @@ function verifier(nom, condition, detail = '') {
   r = await req('GET', '/api/minijeux');
   verifier('API protégée sans connexion (401)', r.statut === 401);
   r = await req('GET', '/api/minijeux', { jeton });
-  verifier('catalogue des 16 mini-jeux', r.statut === 200 && r.json.minijeux.length >= 16, `${r.json.minijeux?.length}`);
+  verifier('catalogue des mini-jeux (16 jeux rapides + Loup-Garou)', r.statut === 200 && r.json.minijeux.length >= 17, `${r.json.minijeux?.length}`);
 
   r = await req('GET', '/api/minijeux', { jeton });
-  verifier('catégories de la page Jeux + Loup-Garou « bientôt »', r.json.categories?.length >= 2 && r.json.minijeux.every((m) => m.categorie)
-    && r.json.bientot.some((b) => b.id === 'loup-garou' && b.categorie === 'soiree'), JSON.stringify(r.json.bientot));
+  const lg = r.json.minijeux.find((m) => m.id === 'loup-garou');
+  verifier('catégories de la page Jeux : Loup-Garou dans les jeux de soirée, « Pour s\'amuser » uniquement', r.json.categories?.length >= 2
+    && r.json.minijeux.every((m) => m.categorie) && lg?.categorie === 'soiree' && JSON.stringify(lg.objets) === '["AMUSEMENT"]'
+    && !r.json.bientot.some((b) => b.id === 'loup-garou'), JSON.stringify(lg));
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'VIP', dateObjet: DEMAIN, parametres: {} } });
   verifier('un membre simple ne peut pas lancer pour le VIP (403)', r.statut === 403, `statut ${r.statut}`);
   r = await req('POST', '/api/salles', { jeton, corps: { miniJeu: 'des', objet: 'CONDUCTEUR', dateObjet: DEMAIN, parametres: {} } });

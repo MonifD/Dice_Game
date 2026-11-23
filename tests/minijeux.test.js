@@ -124,7 +124,7 @@ test('tous les mini-jeux : un tour complet avec 20 joueurs donne des survivants 
   const faussePrisma = { questionQuiz: { findMany: async () => [{ question: 'Q ?', choix: ['oui', 'non'], bonneReponse: 0, categorie: 'Test' }] } };
   const joueurs = Array.from({ length: 20 }, (_, i) => ({ id: String(i + 1), pseudo: `J${i + 1}` }));
   const enJeu = joueurs.map((j) => j.id);
-  for (const m of registre.registre.values()) {
+  for (const m of [...registre.registre.values()].filter((x) => !x.libre)) { // jeux libres : tests dédiés (loup-garou.test.js)
     const params = validerParametres(m, {});
     let etat = await m.initialiser({ params, joueurs, rng, outils: { prisma: faussePrisma } });
     const d = await m.debutTour({ etat, tour: 1, essai: 0, enJeu, params, rng });
@@ -153,7 +153,7 @@ test('tous les mini-jeux : un tour complet avec 20 joueurs donne des survivants 
 
 test('chaque mini-jeu a une stratégie de bot pour le test de charge', () => {
   const strategies = require('./strategies');
-  const manquants = [...registre.registre.keys()].filter((id) => !strategies[id]);
+  const manquants = [...registre.registre.values()].filter((m) => !m.libre).map((m) => m.id).filter((id) => !strategies[id]);
   assert.deepStrictEqual(manquants, [], `stratégie de bot manquante pour : ${manquants.join(', ')} -> ajoute-la dans tests/strategies.js`);
 });
 

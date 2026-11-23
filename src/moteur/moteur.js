@@ -8,6 +8,10 @@
  * Il ne connaît RIEN des règles d'un mini-jeu : il appelle l'interface du module
  * (voir src/minijeux/index.js).
  *
+ * Jeux « libres » (module.libre = true, ex. Loup-Garou) : après la salle d'attente, le moteur délègue tout
+ * le déroulé au module (phase « jeu ») : actions, échéances, fin. Chaque joueur reçoit en plus SA vue privée
+ * (« jeu:prive », envoyée seulement à lui), et les salons de discussion suivent les droits donnés par le module.
+ *
  * État et multi-instances
  * -----------------------
  * Tout l'état est dans le stockage partagé (Redis), jamais seulement en mémoire :
@@ -184,7 +188,8 @@ class Moteur {
     const r = await this.sousVerrou(code, async (etat) => {
       if (etat.joueurs[id]) return { deja: true };
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie a déjà commencé : tu peux la suivre en spectateur.');
-      if (etat.ordre.length >= config.maxJoueursParSalle) throw new ErreurJeu('La salle est pleine.');
+      const max = Math.min(config.maxJoueursParSalle, registre.obtenir(etat.miniJeu)?.maxJoueurs || Infinity);
+      if (etat.ordre.length >= max) throw new ErreurJeu(`La salle est pleine (${max} joueurs maximum).`);
       etat.joueurs[id] = { pseudo: joueur.pseudo, statut: 'enJeu', tourElimination: null, pret: false };
       etat.ordre.push(id);
       await this.ecrire(etat);
@@ -246,7 +251,8 @@ class Moteur {
     await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
       if (etat.phase !== 'attente') throw new ErreurJeu('La partie est déjà lancée.');
-      if (etat.ordre.length < 2) throw new ErreurJeu('Il faut au moins 2 joueurs inscrits.');
+      const min = registre.obtenir(etat.miniJeu)?.minJoueurs || 2;
+      if (etat.ordre.length < min) throw new ErreurJeu(`Il faut au moins ${min} joueurs inscrits et prêts.`);
       const pasPrets = etat.ordre.filter((id) => !etat.joueurs[id].pret);
       if (pasPrets.length) {
         const noms = pasPrets.slice(0, 5).map((id) => etat.joueurs[id].pseudo).join(', ');
@@ -254,7 +260,10 @@ class Moteur {
       }
       const mod = this.module(etat);
       const joueurs = etat.ordre.map((id) => ({ id, pseudo: etat.joueurs[id].pseudo }));
-      etat.etatJeu = await mod.initialiser({ params: etat.params, joueurs, rng, outils: { prisma }, reglages: etat.reglagesOrga });
+      if (mod.libre) mod.verifierLancement?.({ params: etat.params, nbJoueurs: joueurs.length });
+      etat.etatJeu = await mod.initialiser({
+        params: etat.params, joueurs, rng, outils: { prisma }, reglages: etat.reglagesOrga, maintenant: Date.now(),
+      });
       etat.debutLe = Date.now();
 
       try {
@@ -268,6 +277,12 @@ class Moteur {
         });
       } catch (e) { console.error('[moteur] enregistrement du lancement', e.message); }
 
+      if (mod.libre) {
+        etat.phase = 'jeu';
+        etat.tour = 1;
+        await this.appliquerLibre(etat);
+        return;
+      }
       await this.demarrerTour(etat);
       await this.ecrire(etat);
       this.apresTransition(etat);
@@ -278,6 +293,14 @@ class Moteur {
   async suivant(code, auteurId) {
     await this.exigerMeneur(auteurId, code);
     await this.sousVerrou(code, async (etat) => {
+      if (etat.phase === 'jeu') {
+        const mod = this.module(etat);
+        if (typeof mod.passer !== 'function') throw new ErreurJeu('Rien à faire passer maintenant.');
+        const r = mod.passer({ etat: etat.etatJeu, maintenant: Date.now(), rng });
+        if (r?.etat) etat.etatJeu = r.etat;
+        await this.appliquerLibre(etat);
+        return;
+      }
       if (etat.phase === 'tour') await this.resoudreTour(etat);
       else if (etat.phase === 'resultats') await this.apresResultats(etat);
       else throw new ErreurJeu('Rien à faire passer maintenant.');
@@ -357,6 +380,7 @@ class Moteur {
     const id = String(joueurId);
     let etat = await this.lireRapide(code);
     if (!etat) throw new ErreurJeu('Salle introuvable.');
+    if (registre.obtenir(etat.miniJeu)?.libre) return this.agirLibre(code, id, donnees);
     // le cache peut avoir quelques ms de retard au tout début d'un tour : on relit
     if (etat.phase !== 'tour' || Date.now() > etat.tourCourant.finMs) { this.cache.delete(code); etat = await this.exigerSalle(code); }
     if (etat.phase !== 'tour') throw new ErreurJeu('Aucun tour en cours.');
@@ -400,6 +424,119 @@ class Moteur {
       setTimeout(() => this.traiter(code).catch((e) => console.error('[moteur] fin anticipée', e)), DELAI_DERNIER_COUP_MS + 50).unref?.();
     }
     return { prive: res.prive ?? null, fini: res.fini, public: res.public ?? null };
+  }
+
+  // ------------------------------------------------------------------ jeux libres (ex. Loup-Garou)
+
+  /** Action d'un joueur dans un jeu libre : sous verrou de salle (peu de joueurs), le module vérifie tout. */
+  async agirLibre(code, id, donnees) {
+    return this.sousVerrou(code, async (etat) => {
+      if (etat.phase !== 'jeu') throw new ErreurJeu(etat.phase === 'attente' ? 'La partie n\'a pas encore commencé.' : 'La partie est terminée.');
+      if (!etat.joueurs[id]) throw new ErreurJeu('Tu ne participes pas à cette partie (spectateur).');
+      const r = this.module(etat).action({ etat: etat.etatJeu, joueurId: id, donnees: donnees ?? {}, maintenant: Date.now(), rng });
+      if (r?.etat) etat.etatJeu = r.etat;
+      await this.appliquerLibre(etat);
+      return { message: r?.message || null };
+    });
+  }
+
+  /**
+   * Après chaque changement d'un jeu libre (sous verrou) : statut des joueurs, échéance, fin de partie,
+   * sauvegarde, diffusion (vue publique + vues privées), et retrait des salons de discussion devenus interdits.
+   */
+  async appliquerLibre(etat) {
+    const mod = this.module(etat);
+    for (const id of etat.ordre) {
+      const st = mod.statutJoueur({ etat: etat.etatJeu, joueurId: id });
+      etat.joueurs[id].statut = st.vivant ? 'enJeu' : 'elimine';
+      etat.joueurs[id].tourElimination = st.vivant ? null : st.quand;
+    }
+    etat.tour = etat.etatJeu.numero || etat.tour;
+    etat.echeance = mod.echeance({ etat: etat.etatJeu }) || null;
+    const fin = mod.fin({ etat: etat.etatJeu });
+    if (fin) await this.terminerLibre(etat, fin);
+    else await this.ecrire(etat);
+    this.apresTransition(etat);
+    this.retirerDesSalonsInterdits(etat);
+  }
+
+  /** Un joueur qui perd l'accès à un salon (loup mort…) cesse immédiatement d'en recevoir les messages. */
+  retirerDesSalonsInterdits(etat) {
+    const mod = this.module(etat);
+    if (!this.io || !mod.salons) return;
+    for (const salon of mod.salons) {
+      for (const id of etat.ordre) {
+        if (!mod.droitsChat({ etat: etat.etatJeu, joueurId: id, salon }).lire) this.io.in(`joueur:${id}`).socketsLeave(`chat:jeu:${etat.code}:${salon}`);
+      }
+    }
+  }
+
+  async terminerLibre(etat, fin) {
+    etat.phase = 'termine';
+    etat.finLe = Date.now();
+    etat.echeance = null;
+    etat.resultat = { camp: fin.camp, libelle: fin.libelle, gagnants: fin.gagnants.map((id) => ({ id, pseudo: etat.joueurs[id]?.pseudo })) };
+    etat.gagnant = null; // jeu d'équipe : pas de gagnant unique (le classement des victoires n'est pas modifié)
+    await this.ecrire(etat);
+    await this.archiver(etat);
+    const gagnants = fin.gagnants.map(Number);
+    try {
+      await prisma.$transaction([
+        prisma.partie.update({
+          where: { id: etat.partieId },
+          data: { statut: 'TERMINEE', dateFin: new Date(), nbTours: fin.numero || etat.tour, resultat: etat.resultat },
+        }),
+        prisma.participation.updateMany({ where: { partieId: etat.partieId, joueurId: { in: gagnants } }, data: { positionFinale: 1, tourAtteint: fin.numero || 0 } }),
+        prisma.participation.updateMany({ where: { partieId: etat.partieId, joueurId: { notIn: gagnants } }, data: { positionFinale: 2, tourAtteint: fin.numero || 0 } }),
+      ]);
+    } catch (e) { console.error('[moteur] enregistrement de la fin (jeu libre)', e.message); }
+  }
+
+  /** Exclure un joueur ABSENT pendant un jeu libre (organisateur, R4, R5, admins) : il est considéré comme mort. */
+  async exclureEnJeu(code, joueurId, auteurId) {
+    await this.exigerMeneur(auteurId, code);
+    const id = String(joueurId);
+    if ((await this.connectes(code)).has(id)) throw new ErreurJeu('Ce joueur est connecté : on ne peut exclure qu\'un joueur absent.');
+    await this.sousVerrou(code, async (etat) => {
+      const mod = this.module(etat);
+      if (etat.phase !== 'jeu' || typeof mod.exclure !== 'function') throw new ErreurJeu('On ne peut exclure un joueur que pendant la partie.');
+      const r = mod.exclure({ etat: etat.etatJeu, joueurId: id, maintenant: Date.now() });
+      if (r?.etat) etat.etatJeu = r.etat;
+      await this.appliquerLibre(etat);
+    });
+  }
+
+  /** Joueurs dont la page de cette salle est ouverte (toutes instances). */
+  async connectes(code) {
+    if (!this.io) return new Set();
+    try {
+      const sockets = await this.io.in(`salle:${code}`).fetchSockets();
+      return new Set(sockets.map((s) => s.data?.joueur?.id).filter(Boolean));
+    } catch { return new Set(); }
+  }
+
+  /** Vue privée d'un joueur dans un jeu libre (null si spectateur, jeu classique ou salle d'attente). */
+  async vuePrivee(etatOuCode, joueurId) {
+    const etat = typeof etatOuCode === 'string' ? await this.lire(etatOuCode) : etatOuCode;
+    if (!etat || !etat.etatJeu) return null;
+    const mod = registre.obtenir(etat.miniJeu);
+    if (!mod?.libre || etat.phase === 'attente') return null;
+    return mod.vuePrivee({ etat: etat.etatJeu, joueurId: String(joueurId) });
+  }
+
+  /**
+   * Droits d'un joueur sur un salon de discussion d'une salle :
+   *  salon 'village' = chat de la salle ; autres salons = ceux du module (ex. 'loups', 'morts').
+   * Hors jeu libre en cours, le chat de la salle est ouvert à tous et les autres salons n'existent pas.
+   */
+  async droitsChat(code, salon, joueurId) {
+    const etat = await this.lire(code);
+    if (!etat) return { lire: false, ecrire: false, raison: 'Cette salle n\'existe plus.' };
+    const mod = registre.obtenir(etat.miniJeu);
+    const enJeu = mod?.libre && etat.etatJeu && etat.phase !== 'attente' && !etat.annulee;
+    if (salon === 'village' && !enJeu) return { lire: true, ecrire: true };
+    if (!enJeu || (salon !== 'village' && !mod.salons?.includes(salon))) return { lire: false, ecrire: false, raison: 'Salon indisponible.' };
+    return mod.droitsChat({ etat: etat.etatJeu, joueurId: String(joueurId), salon });
   }
 
   // ------------------------------------------------------------------ transitions (sous verrou)
@@ -614,6 +751,14 @@ class Moteur {
     await this.sousVerrou(code, async (etat) => {
       const maintenant = Date.now();
       let change = false;
+      if (etat.phase === 'jeu') {
+        if (etat.echeance && maintenant >= etat.echeance) {
+          const r = this.module(etat).avancer({ etat: etat.etatJeu, maintenant, rng });
+          if (r?.etat) etat.etatJeu = r.etat;
+          await this.appliquerLibre(etat);
+        } else if (etat.echeance && !this.minuteurs.has(code)) this.programmer(code, etat.echeance);
+        return;
+      }
       if (etat.phase === 'tour') {
         const tc = etat.tourCourant;
         let tousOntJoue = false;
@@ -658,6 +803,8 @@ class Moteur {
   async vueClient(etatOuCode) {
     const etat = typeof etatOuCode === 'string' ? await this.lire(etatOuCode) : etatOuCode;
     if (!etat) return null;
+    const modBase = registre.obtenir(etat.miniJeu);
+    if (modBase?.libre) return this.vueClientLibre(etat, modBase);
     const mod = this.module(etat);
     const base = registre.obtenir(etat.miniJeu);
     let tourCourant = null;
@@ -690,6 +837,28 @@ class Moteur {
     };
   }
 
+  /** Vue de la salle pour un jeu libre : la vue publique du module, jamais son état interne. */
+  async vueClientLibre(etat, mod) {
+    const enJeu = etat.etatJeu && etat.phase !== 'attente';
+    const connectes = enJeu ? await this.connectes(etat.code) : null;
+    return {
+      code: etat.code, phase: etat.phase,
+      miniJeu: {
+        id: mod.id, nom: mod.nom, icone: mod.icone || '🎮', description: mod.description, libre: true, actionRequise: false,
+        minJoueurs: mod.minJoueurs || 2, maxJoueurs: mod.maxJoueurs || null,
+        regles: etat.phase === 'attente' ? this.regles(mod, etat.params) : undefined,
+        libelles: Object.fromEntries((mod.parametres || []).map((p) => [p.cle, p.libelle])),
+      },
+      jeuActif: { id: mod.id, nom: mod.nom, actionRequise: false },
+      params: etat.params, organisateur: etat.organisateur, objet: etat.objet || null, dateObjet: etat.dateObjet || null,
+      joueurs: etat.ordre.map((id) => ({ id, pseudo: etat.joueurs[id].pseudo, pret: etat.joueurs[id].pret, statut: etat.joueurs[id].statut })),
+      tour: etat.tour, annulee: etat.annulee, gagnant: null, resultat: etat.resultat || null,
+      vue: enJeu ? mod.vuePublique({ etat: etat.etatJeu, connectes }) : null,
+      actionsMeneur: enJeu && etat.phase === 'jeu' && mod.actionsMeneur ? mod.actionsMeneur({ etat: etat.etatJeu }) : [],
+      echeance: etat.echeance, maintenant: Date.now(),
+    };
+  }
+
   /** Règles du mini-jeu avec les paramètres de la partie (salle d'attente). */
   regles(mod, params) {
     try { return typeof mod.regles === 'function' ? mod.regles(params).filter(Boolean).map(String) : [mod.description]; }
@@ -698,6 +867,11 @@ class Moteur {
 
   async diffuserEtat(etat) {
     this.emettre(`salle:${etat.code}`, 'salle:etat', await this.vueClient(etat));
+    // jeu libre : chaque joueur reçoit SA vue privée, envoyée à lui seul (salon personnel « joueur:<id> »)
+    const mod = registre.obtenir(etat.miniJeu);
+    if (mod?.libre && etat.etatJeu && etat.phase !== 'attente') {
+      for (const id of etat.ordre) this.emettre(`joueur:${id}`, 'jeu:prive', { code: etat.code, vue: mod.vuePrivee({ etat: etat.etatJeu, joueurId: id }) });
+    }
   }
 
   /**

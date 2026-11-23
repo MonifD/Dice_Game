@@ -84,6 +84,7 @@ router.get('/historique', async (req, res, next) => {
         id: p.id, code: p.code, date: p.dateDebut || p.dateCreation, statut: p.statut, objet: p.objet, dateObjet: jour(p.dateObjet),
         miniJeu: registre.obtenir(p.miniJeu)?.nom || p.miniJeu, icone: registre.obtenir(p.miniJeu)?.icone || '🎮',
         nbParticipants: p.nbParticipants, nbTours: p.nbTours, gagnant: joueurPublic(p.gagnant), organisateur: nomAffiche(p.organisateur),
+        resultat: p.resultat || null, // jeux d'équipe (Loup-Garou) : camp gagnant et noms des gagnants
       })),
     });
   } catch (e) { next(e); }

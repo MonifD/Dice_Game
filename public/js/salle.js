@@ -13,6 +13,13 @@
  *     demonter()                   nettoyage (minuteurs…)
  *   }
  *   ctx = { etat, tour, public, moi, peutJouer, monAction, agir(donnees), maintenant(), pseudo(id), vue }
+ *
+ * Jeux libres (etat.miniJeu.libre, ex. Loup-Garou) : après la salle d'attente, tout l'écran est délégué à
+ *   LW.miniJeux[id].scene(zone, ctx)        dessine la partie (appelé à chaque changement)
+ *   LW.miniJeux[id].listeJoueurs(ctx)       HTML de la liste des joueurs (vivants, morts, absents…)
+ *   LW.miniJeux[id].libellePhase(ctx)       texte du badge de phase
+ *   ctx = { etat, vue (publique), prive (vue secrète du joueur, reçue par « jeu:prive »), moi, meneur,
+ *           agir(donnees), maintenant(), chat (promesse du widget de discussion), code }
  */
 (async () => {
   const { $, $$, echapper, h, toast } = LW;
@@ -28,6 +35,7 @@
   document.title = `UPX Arène — Salle ${code}`;
 
   let etat = null;
+  let prive = null; // jeux libres : ce que moi seul ai le droit de savoir (mon rôle…)
   let decalage = 0; // horloge serveur - horloge locale
   let cleMontee = null; // tour actuellement affiché
   let moduleMonte = null;
@@ -47,6 +55,7 @@
       $('#scene').innerHTML = `<div class="vide">${echapper(rep.erreur)}<br><br><a class="btn" href="/accueil">Retour à l'accueil</a></div>`;
       return;
     }
+    prive = rep.prive || null;
     recevoirEtat(rep.etat, true);
     if (rejoindreAuto) {
       rejoindreAuto = false;
@@ -64,6 +73,7 @@
   const chat = LW.chat.monter(document.body, `salle:${code}`, { titre: '💬 Chat de la salle' });
 
   socket.on('salle:etat', (e) => { if (e?.code === code) recevoirEtat(e); });
+  socket.on('jeu:prive', (p) => { if (p?.code === code) { prive = p.vue; demanderRendu(); } });
   socket.on('salle:inscription', ({ id, pseudo }) => {
     if (!etat || etat.joueurs.some((j) => j.id === id)) return;
     etat.joueurs.push({ id, pseudo, statut: 'enJeu', tourElimination: null, pret: false });
@@ -111,6 +121,19 @@
   const pseudo = (id) => etat?.joueurs.find((j) => j.id === String(id))?.pseudo || '?';
   /** Je mène cette salle : j'en suis l'organisateur, ou je suis R4 / R5 / admin. */
   const meneur = () => LW.peutMenerSalle(moi, etat);
+  /** Jeu libre (Loup-Garou…) : le module dessine lui-même la partie. */
+  const estLibre = () => !!etat?.miniJeu.libre;
+  const enJeuLibre = () => estLibre() && etat.phase !== 'attente' && !(etat.phase === 'termine' && etat.annulee);
+  function contexteLibre() {
+    return {
+      etat, vue: etat.vue, prive, moi, code, meneur: meneur(), maintenant, chat, pseudo,
+      agir: async (donnees) => {
+        const rep = await LW.emettre('jeu:action', { code, donnees });
+        if (!rep.ok) toast(rep.erreur, 'erreur'); else if (rep.message) toast(rep.message, 'ok');
+        return rep;
+      },
+    };
+  }
 
   async function chargerModule(id) {
     if (!LW.miniJeux[id]) await LW.chargerScript(`/minijeux/${id}/client.js`);
@@ -142,7 +165,8 @@
     decalage = nouvel.maintenant - Date.now();
     const ancienne = etat?.phase;
     etat = nouvel;
-    if (etat.phase === 'tour') await chargerModule(etat.jeuActif.id);
+    if (estLibre() && etat.phase !== 'attente') await chargerModule(etat.miniJeu.id);
+    else if (etat.phase === 'tour') await chargerModule(etat.jeuActif.id);
     else if (etat.phase === 'attente' && meneur()) await chargerModule(etat.miniJeu.id); // réglages éventuels du mini-jeu
     else if (etat.phase === 'resultats' && etat.dernierResultat) await chargerModule(etat.dernierResultat.departage ? '_departage' : etat.miniJeu.id);
     if (!premier && ancienne !== etat.phase && etat.phase === 'termine' && etat.gagnant?.id === String(moi.id)) toast('🏆 Tu as gagné !', 'ok');
@@ -228,11 +252,13 @@
     $('#nom-jeu').textContent = etat.miniJeu.nom + (etat.departage ? ' — mort subite' : '');
     $('#objet-salle').innerHTML = LW.badgeObjet(etat.objet, { long: true, date: etat.dateObjet });
     $('#organisateur').textContent = `Organisée par ${etat.organisateur.pseudo}`;
-    const phases = { attente: ['Salle d\'attente', 'vert'], tour: [`Tour ${etat.tour}${etat.essai ? ' (rejoué)' : ''}`, 'or'], resultats: [`Résultats du tour ${etat.dernierResultat?.tour ?? ''}`, 'or'], termine: [etat.annulee ? 'Arrêtée' : 'Terminée', etat.annulee ? 'rouge' : 'bleu'] };
+    const modLibre = enJeuLibre() ? LW.miniJeux[etat.miniJeu.id] : null;
+    const phases = { jeu: [modLibre?.libellePhase?.(contexteLibre()) || 'En cours', 'or'], attente: ['Salle d\'attente', 'vert'], tour: [`Tour ${etat.tour}${etat.essai ? ' (rejoué)' : ''}`, 'or'], resultats: [`Résultats du tour ${etat.dernierResultat?.tour ?? ''}`, 'or'], termine: [etat.annulee ? 'Arrêtée' : 'Terminée', etat.annulee ? 'rouge' : 'bleu'] };
     const [txt, cls] = phases[etat.phase];
     $('#phase').textContent = txt; $('#phase').className = `badge ${cls}`;
     const enJeu = etat.joueurs.filter((j) => j.statut === 'enJeu').length;
-    $('#compteur').textContent = etat.phase === 'attente' ? `${nbPrets()} / ${etat.joueurs.length} prêt(s)` : `${enJeu} / ${etat.joueurs.length} en jeu`;
+    $('#compteur').textContent = etat.phase === 'attente' ? `${nbPrets()} / ${etat.joueurs.length} prêt(s)`
+      : `${enJeu} / ${etat.joueurs.length} ${estLibre() ? 'en vie' : 'en jeu'}`;
 
     rendreBandeau();
     rendreJoueurs();
@@ -268,7 +294,9 @@
   $('#joueurs').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-exclure]');
     if (!b) return;
-    if (!confirm(`Exclure ${b.dataset.pseudo} de la salle d'attente ?`)) return;
+    if (!confirm(etat.phase === 'jeu'
+      ? `Exclure ${b.dataset.pseudo} (absent) ? Il sera considéré comme mort et son rôle sera révélé.`
+      : `Exclure ${b.dataset.pseudo} de la salle d'attente ?`)) return;
     b.disabled = true;
     const rep = await LW.emettre('salle:exclure', { code, joueurId: b.dataset.exclure });
     if (!rep.ok) { toast(rep.erreur, 'erreur'); b.disabled = false; }
@@ -277,6 +305,7 @@
   function rendreBandeau() {
     const j = monJoueur();
     let html = '';
+    if (enJeuLibre()) { $('#bandeau').innerHTML = ''; return; } // le jeu affiche lui-même spectateur / mort
     if (etat.phase !== 'attente' && etat.phase !== 'termine') {
       if (!j) html = '<div class="bandeau spectateur">👀 Tu regardes cette partie en spectateur.</div>';
       else if (j.statut === 'elimine') html = `<div class="bandeau elimine">💀 Tu as été éliminé au tour ${j.tourElimination}. Tu restes en spectateur.</div>`;
@@ -285,6 +314,11 @@
   }
 
   function rendreJoueurs() {
+    if (enJeuLibre() && LW.miniJeux[etat.miniJeu.id]?.listeJoueurs) {
+      $('#nb-joueurs').textContent = `${etat.joueurs.length}`;
+      $('#joueurs').innerHTML = LW.miniJeux[etat.miniJeu.id].listeJoueurs(contexteLibre());
+      return;
+    }
     const tc = etat.tourCourant;
     const actions = new Map((tc?.actions || []).map((a) => [a.joueurId, a]));
     const mod = tc ? LW.miniJeux[etat.jeuActif.id] : null;
@@ -312,11 +346,15 @@
     if (etat.phase === 'attente') {
       const n = etat.joueurs.length;
       const prets = nbPrets();
+      const min = etat.miniJeu.minJoueurs || 2;
       b.push('<button class="btn" data-o="alerter" title="Fait sonner une alerte chez tous les joueurs de la salle">🔔 Appeler les joueurs</button>');
-      b.push(`<button class="btn principal" data-o="lancer" ${n < 2 || prets < n ? 'disabled' : ''}>▶ Lancer la partie</button>`);
-      aide = n < 2 ? 'Il faut au moins 2 joueurs inscrits pour lancer.'
+      b.push(`<button class="btn principal" data-o="lancer" ${n < min || prets < n ? 'disabled' : ''}>▶ Lancer la partie</button>`);
+      aide = n < min ? `Il faut au moins ${min} joueurs inscrits et prêts pour lancer (${n} pour l'instant).`
         : prets < n ? `${prets} / ${n} joueurs prêts. La partie pourra être lancée quand tout le monde sera prêt. Exclus avec ✕ (liste des joueurs) ceux qui ne répondent pas.`
           : 'Tout le monde est prêt ! Une fois lancée, plus personne ne peut rejoindre (sauf en spectateur).';
+    } else if (etat.phase === 'jeu') {
+      for (const a of etat.actionsMeneur || []) b.push(`<button class="btn" data-o="${echapper(a.o)}">${echapper(a.libelle)}</button>`);
+      aide = 'Le site joue le rôle du meneur. Un joueur absent (⚪ dans la liste) peut être exclu avec ✕ : il est alors considéré comme mort.';
     } else if (etat.phase === 'tour') {
       b.push('<button class="btn" data-o="suivant">⏭ Terminer le tour maintenant</button>');
       aide = 'Les joueurs qui n\'ont pas joué à la fin du tour sont éliminés.';
@@ -379,6 +417,14 @@
 
   function rendreScene() {
     const scene = $('#scene');
+    if (enJeuLibre()) {
+      demonterModule(); arreterChrono();
+      const mod = LW.miniJeux[etat.miniJeu.id];
+      if (!mod?.scene) { scene.innerHTML = '<div class="vide">Chargement du jeu…</div>'; return; }
+      try { mod.scene(scene, contexteLibre()); } catch (e) { console.error(e); }
+      return;
+    }
+    document.body.classList.remove('jeu-nuit', 'jeu-jour');
     if (etat.phase !== 'tour') { demonterModule(); arreterChrono(); }
     if (etat.phase !== 'resultats') { delete scene.dataset.resultats; clearTimeout(minuteurRevelation); }
     if (etat.phase === 'attente') return sceneAttente(scene);
@@ -404,7 +450,7 @@
         <p class="muet" style="max-width:520px;margin-bottom:0">${echapper(etat.miniJeu.description)}</p>
         <div class="puces" style="justify-content:center">${params.filter(([, v]) => v !== '').map(([k, v]) => `<span class="badge">${echapper(libelleParam(k))} : <b>${echapper(String(v === true ? 'oui' : v === false ? 'non' : String(v).includes('\n') || String(v).length > 40 ? `${String(v).split('\n').filter((l) => l.trim()).length} tour(s) préparé(s)` : v))}</b></span>`).join('')}</div>
         <div class="grand-texte" style="font-size:3rem;margin-top:10px">${prets} / ${n}</div>
-        <div class="muet" style="margin-top:-14px">joueur(s) prêt(s)</div>
+        <div class="muet" style="margin-top:-14px">joueur(s) prêt(s)${etat.miniJeu.maxJoueurs ? ` · de ${etat.miniJeu.minJoueurs} à ${etat.miniJeu.maxJoueurs} joueurs` : ''}</div>
         ${inscrit ? '' : '<button class="btn principal geant" id="btn-rejoindre">⚔ Rejoindre la partie</button>'}
       </div>
       ${blocRegles()}
@@ -427,7 +473,11 @@
   function blocRegles() {
     const m = etat.miniJeu;
     const o = LW.objets[etat.objet];
-    const communes = [
+    const communes = m.libre ? [
+      `👥 De ${m.minJoueurs} à ${m.maxJoueurs} joueurs. La partie démarre quand tout le monde est prêt. La personne qui lance la partie joue aussi.`,
+      '🤖 Le site joue le rôle du meneur : il annonce les phases, gère les minuteurs et les actions de chacun.',
+      '🔌 Déconnecté ? Tu gardes ton rôle et tu reprends où en est la partie en revenant.',
+    ] : [
       m.actionRequise ? `⏱ Joue avant la fin du chrono (${etat.params.dureeTour} s par tour) : si tu ne joues pas, tu es éliminé.` : null,
       '👀 Éliminé ? Tu restes en spectateur jusqu\'à la fin de la partie.',
       `🏆 Le dernier survivant gagne${o ? ` et sera <b>${o.long}</b>${etat.dateObjet ? ` le <b>${LW.jour(etat.dateObjet)}</b>` : ''}` : ''}. La finale se joue toujours à 2 au minimum.`,
@@ -441,7 +491,7 @@
   }
 
   const LIBELLES = { dureeTour: 'Temps par tour (s)' };
-  function libelleParam(k) { return LIBELLES[k] || k.replace(/([A-Z])/g, ' $1').toLowerCase(); }
+  function libelleParam(k) { return etat?.miniJeu.libelles?.[k] || LIBELLES[k] || k.replace(/([A-Z])/g, ' $1').toLowerCase(); }
 
   // --- tour en cours
   function sceneTour(scene) {

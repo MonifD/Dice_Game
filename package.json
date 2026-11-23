@@ -15,7 +15,7 @@
     "test:charge": "node tests/charge.js --joueurs 100 --tous",
     "superadmin": "node prisma/superadmin.js",
     "test:nettoyer": "node tests/nettoyer-bots.js",
-    "test:integration": "node tests/integration/api.js && node tests/integration/chat.js",
+    "test:integration": "node tests/integration/api.js && node tests/integration/chat.js && node tests/integration/loup-garou.js",
     "ci:version": "node scripts/ci/version.js"
   },
   "dependencies": {

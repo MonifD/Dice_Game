@@ -57,10 +57,11 @@ last_war/
 │   └── minijeux/
 │       ├── index.js           registre (charge automatiquement chaque dossier)
 │       ├── categories.js      catégories de la page Jeux + cartes « Bientôt disponible »
+│       ├── loup-garou/        jeu de soirée « libre » : logique.js (rôles, nuit/jour, victoire) + serveur.js + client.js
 │       └── <id>/serveur.js + client.js   un dossier par mini-jeu (serveur.js contient aussi regles(params), affichées en salle d'attente)
 ├── scripts/ci/                version.js (calcul de version) · attendre-calme.js · verifier-prod.js
 ├── docs/CICD.md               mode d'emploi de la pipeline
-└── tests/  minijeux.test.js · permissions.test.js · jour.test.js (unitaires) · integration/ (API, droits, désignations, chat)
+└── tests/  minijeux.test.js · permissions.test.js · jour.test.js · loup-garou.test.js (unitaires) · integration/ (API, droits, désignations, chat, loup-garou)
             charge.js + strategies.js (100 joueurs simulés) · nettoyer-bots.js
 ```
 
@@ -69,7 +70,7 @@ last_war/
 | Table | Champs principaux |
 |---|---|
 | `joueurs` | pseudo (unique), pseudoNormalise (unique, insensible à la casse), motDePasseHash (bcrypt), rang R1–R5 (R1 par défaut), rôle JOUEUR/ADMIN/SUPER_ADMIN, actif, dateInscription, derniereConnexion, **doitChangerMdp** (mot de passe temporaire), **supprimeLe** + **pseudoSupprime** (compte supprimé : la ligne reste pour l'historique, le pseudo est libéré) |
-| `parties` | code de salle, miniJeu, **objet** (CONDUCTEUR / VIP du train / AMUSEMENT « Pour s'amuser ») + **dateObjet** (jour J ; vide pour « Pour s'amuser » et les anciennes parties), parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant |
+| `parties` | code de salle, miniJeu, **objet** (CONDUCTEUR / VIP du train / AMUSEMENT « Pour s'amuser ») + **dateObjet** (jour J ; vide pour « Pour s'amuser » et les anciennes parties), parametres (JSON), statut ATTENTE/EN_COURS/TERMINEE/ANNULEE, dates, organisateur, nbParticipants, nbTours, gagnant (vide pour un jeu d'équipe), **resultat** (Loup-Garou : camp gagnant + noms des gagnants) |
 | `designations` | objet (CONDUCTEUR / VIP), jour, joueur (vide = « Non désigné »), mode PARTIE / MANUELLE / SUPPRESSION, partie, auteur, ancienPseudo, **active**, remplaceeLe — une ligne par changement ; la ligne active d'un (objet, jour) est la désignation en vigueur |
 | `participations` | joueur, partie, tourAtteint, positionFinale (1 = gagnant, ex aequo partagés) |
 | `questions_quiz` | catégorie, question, choix[], bonneReponse, active |
@@ -133,7 +134,7 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | `jeu:orga` | `{ code, donnees }` | organisateur, R4/R5/admin | réglage du mini-jeu pour le prochain tour, en salle d'attente ou entre deux tours (ex. options A / B de la minorité) |
 | `jeu:action` | `{ code, donnees }` | joueur en jeu | joue son coup (une seule action par tour, sauf jeux de clics) |
 | `accueil:suivre` | – | tous | reçoit `salles:maj` quand la liste change |
-| `chat:rejoindre` | `{ canal }` | tous | `general` ou `salle:<code>` ; renvoie les 100 derniers messages |
+| `chat:rejoindre` | `{ canal }` | tous | `general`, `salle:<code>` ou `jeu:<code>:loups` / `jeu:<code>:morts` (droits donnés par le jeu) ; renvoie les 100 derniers messages |
 | `chat:quitter` | `{ canal }` | tous | ne plus recevoir ce salon |
 | `chat:envoyer` | `{ canal, texte, reponseA? }` | tous (sauf muets) | 200 caractères max, anti-flood 1/s et 6/15 s ; `reponseA` = id du message auquel on répond |
 | `chat:reagir` | `{ canal, id, emoji }` | tous (sauf muets) | réaction ❤ (`62`) ou 🎉 (`74`) ; un 2e clic la retire ; 15 / 10 s max |
@@ -145,6 +146,7 @@ Chaque message client reçoit une réponse `{ ok: true, ... }` ou `{ ok: false, 
 | Serveur → client | Données |
 |---|---|
 | `salle:etat` | état complet de la salle (à chaque changement de phase) |
+| `jeu:prive` | `{ code, vue }` — jeux libres : vue secrète du joueur (son rôle…), envoyée à lui seul |
 | `salle:inscription` / `salle:desinscription` | `{ id, pseudo, nb }` en salle d'attente |
 | `salle:pret` | `{ id, pret, nbPrets, nb }` |
 | `salle:alerte` | `{ par }` — son + vibration chez les joueurs |
@@ -204,6 +206,26 @@ les échéances toutes les secondes, donc si l'instance qui gérait un tour disp
 Les messages passent par l'adaptateur Redis de Socket.IO. Un joueur qui se reconnecte (autre instance,
 réseau coupé, fin de durée max d'une fonction Vercel) renvoie `salle:observer` et retrouve son état exact.
 
+## Jeux libres : le Loup-Garou
+
+Un module `libre: true` (ex. `src/minijeux/loup-garou/`) ne suit pas les tours d'élimination : après la salle d'attente,
+la salle passe en phase `jeu` et le moteur délègue tout au module (`action`, `avancer` à l'échéance, `passer`, `exclure`,
+`fin`). Interface détaillée en tête de `src/minijeux/index.js`.
+
+* **Secrets** : l'état complet (rôles) reste sur le serveur. Tout le monde reçoit `vuePublique` (aucun rôle d'un vivant) ;
+  chaque joueur reçoit en plus `vuePrivee` sur son salon personnel `joueur:<id>` (`jeu:prive`, aussi renvoyée par
+  `salle:observer` à la reconnexion). Chaque action est revérifiée (phase, rôle, vivant, cible).
+* **Chats** : le chat de la salle est le « Village » (fermé la nuit, lecture seule pour les morts et spectateurs) ;
+  `jeu:<code>:loups` (loups vivants) et `jeu:<code>:morts` (Cimetière : morts et spectateurs). Un joueur qui perd l'accès
+  (loup mort) est retiré du salon côté serveur. Le widget `LW.chat` affiche les salons en onglets (`definirSalons`, `bloquer`).
+* **Déroulé** : distribution → nuit (Cupidon 1re nuit, Salvateur, Voyante, Loups, Sorcière ; un rôle mort « dort » quand
+  même quelques secondes pour ne rien trahir) → annonce → débat (le meneur peut passer au vote) → vote (second vote entre
+  ex aequo) → annonce → nuit… Chasseur et amoureux en chaîne ; victoire vérifiée après chaque série de morts.
+* **Absents** : un joueur déconnecté garde son rôle ; l'organisateur ou un R4/R5/admin peut l'exclure (`salle:exclure`
+  pendant la partie, seulement s'il n'a pas la salle ouverte) : il est mort, rôle révélé.
+* **Fin** : `parties.resultat` = camp + gagnants, participations position 1 (gagnants) / 2. Pas de `gagnantId` :
+  le classement des victoires ne compte que les mini-jeux.
+
 ## Versions et déploiement
 
 Versions `vX.Y.Z` = tags Git créés par la pipeline (`.github/workflows/livraison.yml`) à partir des titres de PR
@@ -218,4 +240,4 @@ Créer `src/minijeux/mon-jeu/serveur.js` et `client.js` — rien d'autre à modi
 
 Page **Jeux** : un jeu va dans « Jeux rapides » par défaut ; `categorie: 'soiree'` le range dans « Jeux de soirée ».
 Les catégories et les cartes « Bientôt disponible » (ex. Loup-Garou) sont dans `src/minijeux/categories.js` ;
-une carte « bientôt » disparaît d'elle-même dès que le dossier du jeu existe.
+une carte « bientôt » disparaît d'elle-même dès que le dossier du jeu existe. Un jeu à rôles ou en équipe : module `libre: true` (voir ci-dessus).

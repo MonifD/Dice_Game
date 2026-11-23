@@ -7,6 +7,11 @@
  * On le referme avec ✕, Échap ou le bouton « retour » du téléphone.
  * La hauteur du bandeau est publiée dans la variable CSS --chat-h (espace réservé en bas de page).
  * Sur chaque message : ↩ répondre, ❤ / 🎉 réagir (survol sur ordinateur, appui sur le message sur mobile).
+ *
+ * Plusieurs salons dans le même widget (ex. Loup-Garou : Village / Loups / Cimetière) :
+ *   const c = await LW.chat.monter(document.body, 'salle:K7Q2PX');
+ *   c.definirSalons([{ canal: 'salle:K7Q2PX', titre: '🏘 Village' }, { canal: 'jeu:K7Q2PX:loups', titre: '🐺 Loups' }]);
+ *   c.bloquer('salle:K7Q2PX', '🌙 Le chat est fermé la nuit.');   // null pour rouvrir
  */
 (function () {
   const { echapper, h } = LW;
@@ -43,7 +48,11 @@
      * @param {string} canal 'general' ou 'salle:CODE'
      * @param {{ titre?: string }} options
      */
-    async monter(conteneur, canal, { titre = '💬 Discussion' } = {}) {
+    async monter(conteneur, canalInitial, { titre = '💬 Discussion' } = {}) {
+      let canal = canalInitial;
+      let salons = [{ canal, titre }]; // salons disponibles (onglets si plus d'un)
+      const nonLusSalon = {}; // canal -> messages non lus (onglets inactifs)
+      const blocages = {}; // canal -> texte affiché à la place du champ de saisie
       const socket = await LW.socket();
       const moi = LW.moi;
       let estOuvert = false;
@@ -56,7 +65,7 @@
           <button class="chat-dock" type="button" aria-expanded="false" aria-label="Ouvrir le chat">
             <span class="chat-dock-int">
               <span class="chat-dock-titre">
-                <span>${echapper(titre)}</span>
+                <span class="chat-titre-dock">${echapper(titre)}</span>
                 <span class="badge or cache chat-non-lus">0</span>
                 <span class="chat-fleche" aria-hidden="true">▴</span>
               </span>
@@ -65,12 +74,14 @@
           </button>
           <div class="chat-feuille" role="dialog" aria-label="${echapper(titre)}">
           <div class="chat-entete">
-            <span>${echapper(titre)}</span>
+            <span class="chat-titre-actif">${echapper(titre)}</span>
+            <div class="chat-onglets cache" role="tablist"></div>
             <button type="button" class="chat-fermer" title="Fermer le chat" aria-label="Fermer le chat">✕</button>
           </div>
           <div class="chat-corps">
             <div class="chat-messages" aria-live="polite"><div class="vide petit">Chargement…</div></div>
             <div class="chat-muet cache"></div>
+            <div class="chat-bloque cache"></div>
             <div class="chat-emojis cache" role="dialog" aria-label="Emojis">
               <div class="chat-emojis-recents cache"><div class="chat-emojis-titre">Récents</div><div class="chat-emojis-grille"></div></div>
               <div class="chat-emojis-titre">Last War</div>
@@ -100,6 +111,8 @@
       const input = form.querySelector('input');
       const badge = panneau.querySelector('.chat-non-lus');
       const zoneMuet = panneau.querySelector('.chat-muet');
+      const zoneBloque = panneau.querySelector('.chat-bloque');
+      const ongletsEl = panneau.querySelector('.chat-onglets');
 
       // ---------- sélecteur d'emojis ----------
       const boiteEmojis = panneau.querySelector('.chat-emojis');
@@ -315,6 +328,7 @@
         input.disabled = actif;
         form.querySelectorAll('button').forEach((b) => { b.disabled = actif; });
         if (actif) ouvrirEmojis(false);
+        if (!actif) appliquerBlocage();
         if (actif) {
           zoneMuet.textContent = `🔇 Un admin t'a rendu muet (encore ${Math.ceil((muetJusqua - Date.now()) / 60000)} min).`;
           setTimeout(() => majMuet(muetJusqua - Date.now()), Math.min(60000, muetJusqua - Date.now() + 500));
@@ -380,7 +394,45 @@
         input.focus();
       };
 
-      const surMessage = (m) => { if (m.canal === canal) ajouter(m); };
+      const surMessage = (m) => {
+        if (m.canal === canal) { ajouter(m); return; }
+        if (!salons.some((x) => x.canal === m.canal) || m.auteur.id === String(moi.id)) return;
+        nonLusSalon[m.canal] = (nonLusSalon[m.canal] || 0) + 1;
+        if (!estOuvert) { nonLus++; majBadge(); }
+        majOnglets();
+      };
+
+      // ---------- plusieurs salons (onglets) ----------
+      function majOnglets() {
+        const titreActif = salons.find((x) => x.canal === canal)?.titre || titre;
+        panneau.querySelector('.chat-titre-actif').textContent = titreActif;
+        panneau.querySelector('.chat-titre-dock').textContent = salons.length > 1 ? `${titreActif} · ${salons.length} salons` : titreActif;
+        ongletsEl.classList.toggle('cache', salons.length < 2);
+        ongletsEl.innerHTML = salons.map((x) => `<button type="button" role="tab" class="chat-onglet ${x.canal === canal ? 'actif' : ''}" data-canal="${echapper(x.canal)}" aria-selected="${x.canal === canal}">${echapper(x.titre)}${nonLusSalon[x.canal] ? ` <span class="badge or">${nonLusSalon[x.canal]}</span>` : ''}</button>`).join('');
+      }
+      ongletsEl.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-canal]');
+        if (b && b.dataset.canal !== canal) changerSalon(b.dataset.canal);
+      });
+      function appliquerBlocage() {
+        const texte = blocages[canal] || null;
+        zoneBloque.classList.toggle('cache', !texte);
+        zoneBloque.textContent = texte || '';
+        if (muetJusqua > Date.now()) return; // le muet garde la main sur le champ
+        input.disabled = !!texte;
+        form.querySelectorAll('button').forEach((b) => { b.disabled = !!texte; });
+        input.placeholder = texte ? 'Lecture seule' : 'Écris un message…';
+        if (texte) { ouvrirEmojis(false); choisirReponse(null); }
+      }
+      async function changerSalon(nouveau) {
+        canal = nouveau;
+        nonLusSalon[canal] = 0;
+        choisirReponse(null);
+        liste.innerHTML = '<div class="vide petit">Chargement…</div>';
+        majOnglets();
+        appliquerBlocage();
+        await rejoindre();
+      }
       const surSuppression = ({ canal: c, id }) => {
         if (c !== canal) return;
         liste.querySelector(`.chat-msg[data-id="${id}"]`)?.remove();
@@ -405,6 +457,10 @@
       socket.on('chat:reaction', surReaction);
       socket.on('chat:muet', surMuet);
 
+      /** S'abonne aux autres salons (pour compter leurs messages non lus). */
+      async function abonnerAutres() {
+        for (const x of salons) if (x.canal !== canal) await LW.emettre('chat:rejoindre', { canal: x.canal });
+      }
       async function rejoindre() {
         const rep = await LW.emettre('chat:rejoindre', { canal });
         if (!rep.ok) {
@@ -415,7 +471,8 @@
         afficherTout(rep.messages);
         majMuet(rep.muetMs);
       }
-      socket.on('connect', rejoindre); // reconnexion : on recharge l'historique
+      const surConnexion = () => { rejoindre(); abonnerAutres(); };
+      socket.on('connect', surConnexion); // reconnexion : on recharge l'historique
       if (socket.connected) await rejoindre();
       majBadge();
 
@@ -423,6 +480,24 @@
         ouvrir: () => ouvrir(true),
         fermer: () => ouvrir(false), // promesse : résolue quand le chat est fermé et la page de nouveau défilable
         estOuvert: () => estOuvert,
+        /** Remplace la liste des salons (onglets). Garde le salon actif s'il est toujours disponible. */
+        async definirSalons(liste) {
+          const avant = new Set(salons.map((x) => x.canal));
+          salons = liste.length ? liste : [{ canal: canalInitial, titre }];
+          const apres = new Set(salons.map((x) => x.canal));
+          for (const c of avant) if (!apres.has(c)) { delete nonLusSalon[c]; LW.emettre('chat:quitter', { canal: c }); }
+          if (!apres.has(canal)) await changerSalon(salons[0].canal);
+          for (const c of apres) if (!avant.has(c) && c !== canal) LW.emettre('chat:rejoindre', { canal: c });
+          majOnglets();
+        },
+        /** Bloque l'écriture dans un salon (texte affiché) ou la rouvre (null). */
+        bloquer(c, texte) {
+          if ((blocages[c] || null) === (texte || null)) return;
+          blocages[c] = texte || null;
+          if (c === canal) appliquerBlocage();
+        },
+        /** Affiche un salon. */
+        afficher(c) { if (salons.some((x) => x.canal === c) && c !== canal) changerSalon(c); },
         detruire() {
           ouvrir(false);
           window.removeEventListener('popstate', surRetour);
@@ -435,7 +510,7 @@
           socket.off('chat:supprime', surSuppression);
           socket.off('chat:reaction', surReaction);
           socket.off('chat:muet', surMuet);
-          socket.off('connect', rejoindre);
+          socket.off('connect', surConnexion);
           document.removeEventListener('pointerdown', fermerSiDehors);
           document.removeEventListener('keydown', fermerEchap);
           LW.emettre('chat:quitter', { canal });

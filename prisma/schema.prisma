@@ -89,6 +89,7 @@ model Partie {
   dateFin          DateTime?
   nbParticipants   Int             @default(0)
   nbTours          Int             @default(0)
+  resultat         Json? // jeux d'équipe (ex. Loup-Garou) : { camp, libelle, gagnants: [{ id, pseudo }] }
 
   organisateurId   Int
   organisateur     Joueur          @relation("Organisateur", fields: [organisateurId], references: [id])

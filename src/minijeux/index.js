@@ -38,6 +38,21 @@
  *        -> réglages du prochain tour choisis par l'organisateur en salle d'attente ou entre deux tours
  *           (ex. options A / B de « La minorité ») ; reçus ensuite dans initialiser/debutTour({ reglages }).
  *           Côté navigateur : LW.miniJeux[id].orga(zone, ctx) affiche le formulaire (ctx.envoyer(donnees)).
+ *
+ * JEUX LIBRES (libre: true, ex. loup-garou/) — le module gère tout son déroulé après la salle d'attente :
+ *  minJoueurs, maxJoueurs                 bornes du nombre de joueurs (salle d'attente / lancement)
+ *  verifierLancement?({ params, nbJoueurs })  lève ErreurJeu si la partie ne peut pas démarrer
+ *  initialiser({ params, joueurs, rng, maintenant })            -> etat (gardé sur le serveur uniquement)
+ *  action({ etat, joueurId, donnees, maintenant, rng })         -> { etat, message? }  (lever ErreurJeu pour refuser)
+ *  avancer({ etat, maintenant, rng })                           -> { etat }  appelé à l'échéance
+ *  echeance({ etat })                                           -> horodatage (ms) de la prochaine étape, ou null
+ *  passer?({ etat, maintenant })   bouton du meneur ; exclure?({ etat, joueurId, maintenant }) joueur absent
+ *  statutJoueur({ etat, joueurId }) -> { vivant, quand } ; fin({ etat }) -> null ou { camp, libelle, gagnants: [ids], numero }
+ *  vuePublique({ etat, connectes })  ce que tout le monde voit (AUCUN secret)
+ *  vuePrivee({ etat, joueurId })     ce que ce joueur seul a le droit de savoir (envoyé à lui seul)
+ *  salons: ['loups', …] + droitsChat({ etat, joueurId, salon }) -> { lire, ecrire, raison }  ('village' = chat de la salle)
+ *  actionsMeneur?({ etat }) -> [{ o: 'suivant', libelle }]
+ *  Côté navigateur : LW.miniJeux[id].scene(zone, ctx) dessine toute la partie (voir public/js/salle.js).
  */
 const fs = require('fs');
 const path = require('path');
@@ -46,7 +61,10 @@ const PARAM_TYPES = ['nombre', 'choix', 'booleen', 'texte'];
 const registre = new Map();
 
 function verifierModule(m, dossier) {
-  const manque = ['id', 'nom', 'initialiser', 'debutTour', 'action', 'resoudreTour'].filter((k) => !m[k]);
+  const requis = m.libre
+    ? ['id', 'nom', 'initialiser', 'action', 'avancer', 'echeance', 'statutJoueur', 'fin', 'vuePublique', 'vuePrivee']
+    : ['id', 'nom', 'initialiser', 'debutTour', 'action', 'resoudreTour'];
+  const manque = requis.filter((k) => !m[k]);
   if (manque.length) throw new Error(`Mini-jeu « ${dossier} » : il manque ${manque.join(', ')}`);
   for (const p of m.parametres || []) {
     if (!p.cle || !PARAM_TYPES.includes(p.type)) throw new Error(`Mini-jeu « ${m.id} » : paramètre invalide ${JSON.stringify(p)}`);
